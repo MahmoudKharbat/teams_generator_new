@@ -53,6 +53,16 @@ export default function TeamGenerator() {
     setShowTeams(false);
   };
 
+  // Shuffle array helper function
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
   // Algorithm to balance teams with minimal power difference
   const generateBalancedTeams = () => {
     const selected = players.filter(p => selectedPlayers.includes(p.id));
@@ -85,6 +95,82 @@ export default function TeamGenerator() {
     
     setTeamA(teamAPlayers);
     setTeamB(teamBPlayers);
+    setShowTeams(true);
+  };
+
+  // Algorithm to generate approximate balanced teams with randomization
+  const generateApproximateTeams = () => {
+    const selected = players.filter(p => selectedPlayers.includes(p.id));
+    
+    if (selected.length < 2) {
+      alert('Please select at least 2 players');
+      return;
+    }
+
+    if (selected.length % 2 !== 0) {
+      alert('Please select an even number of players');
+      return;
+    }
+
+    const teamSize = selected.length / 2;
+    
+    // Shuffle players first to get different combinations each time
+    const shuffled = shuffleArray(selected);
+    
+    // Start with random assignment
+    let teamA = [];
+    let teamB = [];
+    let powerA = 0;
+    let powerB = 0;
+    
+    // Assign players trying to balance, but with shuffled order
+    for (const player of shuffled) {
+      if (teamA.length < teamSize && (powerA <= powerB || teamB.length >= teamSize)) {
+        teamA.push(player);
+        powerA += player.power;
+      } else {
+        teamB.push(player);
+        powerB += player.power;
+      }
+    }
+    
+    // Limited local search: only do a few iterations to keep variety
+    const maxIterations = 3;
+    for (let iter = 0; iter < maxIterations; iter++) {
+      let bestSwap = null;
+      let bestImprovement = 0;
+      
+      // Find the best single swap
+      for (let i = 0; i < teamA.length; i++) {
+        for (let j = 0; j < teamB.length; j++) {
+          const currentDiff = Math.abs(powerA - powerB);
+          const newPowerA = powerA - teamA[i].power + teamB[j].power;
+          const newPowerB = powerB - teamB[j].power + teamA[i].power;
+          const newDiff = Math.abs(newPowerA - newPowerB);
+          const improvement = currentDiff - newDiff;
+          
+          // Only consider swaps that improve significantly (threshold adds randomness)
+          if (improvement > bestImprovement + Math.random() * 2) {
+            bestSwap = { i, j, newPowerA, newPowerB };
+            bestImprovement = improvement;
+          }
+        }
+      }
+      
+      // Apply the best swap if found
+      if (bestSwap && bestImprovement > 1) {
+        const temp = teamA[bestSwap.i];
+        teamA[bestSwap.i] = teamB[bestSwap.j];
+        teamB[bestSwap.j] = temp;
+        powerA = bestSwap.newPowerA;
+        powerB = bestSwap.newPowerB;
+      } else {
+        break;
+      }
+    }
+    
+    setTeamA(teamA);
+    setTeamB(teamB);
     setShowTeams(true);
   };
 
@@ -287,15 +373,22 @@ export default function TeamGenerator() {
           </div>
         )}
 
-        {/* Generate Button */}
+        {/* Generate Buttons */}
         {players.length > 0 && (
-          <div className="text-center mb-8">
+          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8">
             <button
               onClick={generateBalancedTeams}
               disabled={selectedPlayers.length < 2}
-              className="px-10 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-600 text-white text-xl font-bold rounded-2xl transition-all duration-300 shadow-xl hover:shadow-emerald-500/30 disabled:shadow-none disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
+              className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-600 text-white text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl hover:shadow-emerald-500/30 disabled:shadow-none disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
             >
               ⚡ Generate Balanced Teams
+            </button>
+            <button
+              onClick={generateApproximateTeams}
+              disabled={selectedPlayers.length < 2}
+              className="px-8 py-4 bg-gradient-to-r from-violet-600 to-purple-500 hover:from-violet-500 hover:to-purple-400 disabled:from-slate-700 disabled:to-slate-600 text-white text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl hover:shadow-violet-500/30 disabled:shadow-none disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
+            >
+              🎲 Generate Approximate Teams
             </button>
           </div>
         )}
