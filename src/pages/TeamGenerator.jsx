@@ -427,13 +427,6 @@ export default function TeamGenerator() {
                     <span className="text-blue-300 font-bold">{calculateTotalPower(teamA)}</span>
                   </div>
                 </div>
-                {/* Captain Badge */}
-                {captainA && (
-                  <div className="mb-4 px-4 py-2 bg-yellow-500/20 border border-yellow-500/40 rounded-lg flex items-center gap-2">
-                    <span className="text-xl">👑</span>
-                    <span className="text-yellow-300 font-semibold">Captain: {captainA.firstname} {captainA.lastname}</span>
-                  </div>
-                )}
                 <div className="space-y-3">
                   {teamA.map(player => (
                     <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
@@ -469,13 +462,6 @@ export default function TeamGenerator() {
                     <span className="text-rose-300 font-bold">{calculateTotalPower(teamB)}</span>
                   </div>
                 </div>
-                {/* Captain Badge */}
-                {captainB && (
-                  <div className="mb-4 px-4 py-2 bg-yellow-500/20 border border-yellow-500/40 rounded-lg flex items-center gap-2">
-                    <span className="text-xl">👑</span>
-                    <span className="text-yellow-300 font-semibold">Captain: {captainB.firstname} {captainB.lastname}</span>
-                  </div>
-                )}
                 <div className="space-y-3">
                   {teamB.map(player => (
                     <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
