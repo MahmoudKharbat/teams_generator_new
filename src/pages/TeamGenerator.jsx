@@ -20,10 +20,17 @@ export default function TeamGenerator() {
   const downloadTeamsImage = async () => {
     if (!screenshotRef.current) return;
     
+    // Temporarily make the screenshot area visible
+    const element = screenshotRef.current;
+    const originalStyle = element.parentElement.style.cssText;
+    element.parentElement.style.cssText = 'position: fixed; top: 0; left: 0; z-index: -1; opacity: 0;';
+    
     try {
-      const canvas = await html2canvas(screenshotRef.current, {
+      const canvas = await html2canvas(element, {
         backgroundColor: '#0f172a',
         scale: 2,
+        useCORS: true,
+        logging: false,
       });
       
       const link = document.createElement('a');
@@ -32,7 +39,9 @@ export default function TeamGenerator() {
       link.click();
     } catch (error) {
       console.error('Error generating screenshot:', error);
-      alert('Failed to download image. Please try again.');
+    } finally {
+      // Restore original style
+      element.parentElement.style.cssText = originalStyle;
     }
   };
 
@@ -522,30 +531,61 @@ export default function TeamGenerator() {
             </div>
 
             {/* Hidden Screenshot Area (without power info) */}
-            <div className="absolute left-[-9999px]">
-              <div ref={screenshotRef} className="p-8 bg-slate-900" style={{ width: '800px' }}>
-                <h1 className="text-3xl font-black text-center text-emerald-400 mb-6">⚽ Zemer Teams</h1>
-                <div className="grid grid-cols-2 gap-6">
+            <div style={{ position: 'absolute', left: '-9999px', top: '0' }}>
+              <div ref={screenshotRef} style={{ 
+                padding: '32px', 
+                backgroundColor: '#0f172a', 
+                width: '800px',
+                fontFamily: 'system-ui, -apple-system, sans-serif'
+              }}>
+                <h1 style={{ 
+                  fontSize: '28px', 
+                  fontWeight: '900', 
+                  textAlign: 'center', 
+                  color: '#34d399', 
+                  marginBottom: '24px' 
+                }}>⚽ Zemer Teams</h1>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
                   {/* Team A for Screenshot */}
-                  <div className="bg-blue-900/60 rounded-2xl p-5 border border-blue-500/50">
-                    <h2 className="text-xl font-black text-blue-300 mb-4 text-center">🔵 Team A</h2>
-                    <div className="space-y-2">
+                  <div style={{ 
+                    backgroundColor: 'rgba(30, 58, 138, 0.6)', 
+                    borderRadius: '16px', 
+                    padding: '20px', 
+                    border: '1px solid rgba(59, 130, 246, 0.5)' 
+                  }}>
+                    <h2 style={{ 
+                      fontSize: '20px', 
+                      fontWeight: '900', 
+                      color: '#93c5fd', 
+                      marginBottom: '16px', 
+                      textAlign: 'center' 
+                    }}>🔵 Team A</h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {teamA.map(player => (
-                        <div key={player.id} className={`flex items-center gap-3 rounded-lg p-2 ${
-                          captainA && player.id === captainA.id 
-                            ? 'bg-yellow-900/40 border border-yellow-500/50' 
-                            : 'bg-blue-950/60'
-                        }`}>
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-                            captainA && player.id === captainA.id 
-                              ? 'bg-yellow-500/60' 
-                              : 'bg-blue-600/60'
-                          }`}>
+                        <div key={player.id} style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          borderRadius: '8px', 
+                          padding: '8px',
+                          backgroundColor: captainA && player.id === captainA.id ? 'rgba(113, 63, 18, 0.4)' : 'rgba(23, 37, 84, 0.6)',
+                          border: captainA && player.id === captainA.id ? '1px solid rgba(234, 179, 8, 0.5)' : 'none'
+                        }}>
+                          <div style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '50%', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontSize: '14px',
+                            backgroundColor: captainA && player.id === captainA.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(37, 99, 235, 0.6)'
+                          }}>
                             {captainA && player.id === captainA.id ? '👑' : '⚽'}
                           </div>
-                          <span className="font-semibold text-white text-sm">
+                          <span style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
                             {player.firstname} {player.lastname}
-                            {captainA && player.id === captainA.id && <span className="ml-1 text-yellow-400 text-xs">(C)</span>}
+                            {captainA && player.id === captainA.id && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>(C)</span>}
                           </span>
                         </div>
                       ))}
@@ -553,25 +593,45 @@ export default function TeamGenerator() {
                   </div>
 
                   {/* Team B for Screenshot */}
-                  <div className="bg-rose-900/60 rounded-2xl p-5 border border-rose-500/50">
-                    <h2 className="text-xl font-black text-rose-300 mb-4 text-center">🔴 Team B</h2>
-                    <div className="space-y-2">
+                  <div style={{ 
+                    backgroundColor: 'rgba(136, 19, 55, 0.6)', 
+                    borderRadius: '16px', 
+                    padding: '20px', 
+                    border: '1px solid rgba(244, 63, 94, 0.5)' 
+                  }}>
+                    <h2 style={{ 
+                      fontSize: '20px', 
+                      fontWeight: '900', 
+                      color: '#fda4af', 
+                      marginBottom: '16px', 
+                      textAlign: 'center' 
+                    }}>🔴 Team B</h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {teamB.map(player => (
-                        <div key={player.id} className={`flex items-center gap-3 rounded-lg p-2 ${
-                          captainB && player.id === captainB.id 
-                            ? 'bg-yellow-900/40 border border-yellow-500/50' 
-                            : 'bg-rose-950/60'
-                        }`}>
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
-                            captainB && player.id === captainB.id 
-                              ? 'bg-yellow-500/60' 
-                              : 'bg-rose-600/60'
-                          }`}>
+                        <div key={player.id} style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '12px', 
+                          borderRadius: '8px', 
+                          padding: '8px',
+                          backgroundColor: captainB && player.id === captainB.id ? 'rgba(113, 63, 18, 0.4)' : 'rgba(76, 5, 25, 0.6)',
+                          border: captainB && player.id === captainB.id ? '1px solid rgba(234, 179, 8, 0.5)' : 'none'
+                        }}>
+                          <div style={{ 
+                            width: '32px', 
+                            height: '32px', 
+                            borderRadius: '50%', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            fontSize: '14px',
+                            backgroundColor: captainB && player.id === captainB.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(225, 29, 72, 0.6)'
+                          }}>
                             {captainB && player.id === captainB.id ? '👑' : '⚽'}
                           </div>
-                          <span className="font-semibold text-white text-sm">
+                          <span style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
                             {player.firstname} {player.lastname}
-                            {captainB && player.id === captainB.id && <span className="ml-1 text-yellow-400 text-xs">(C)</span>}
+                            {captainB && player.id === captainB.id && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>(C)</span>}
                           </span>
                         </div>
                       ))}
