@@ -8,6 +8,8 @@ export default function TeamGenerator() {
   const [selectedPlayers, setSelectedPlayers] = useState([]);
   const [teamA, setTeamA] = useState([]);
   const [teamB, setTeamB] = useState([]);
+  const [captainA, setCaptainA] = useState(null);
+  const [captainB, setCaptainB] = useState(null);
   const [showTeams, setShowTeams] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -93,8 +95,14 @@ export default function TeamGenerator() {
     const teamAPlayers = bestTeam;
     const teamBPlayers = sorted.filter(p => !bestTeam.includes(p));
     
+    // Select random captains
+    const randomCaptainA = teamAPlayers[Math.floor(Math.random() * teamAPlayers.length)];
+    const randomCaptainB = teamBPlayers[Math.floor(Math.random() * teamBPlayers.length)];
+    
     setTeamA(teamAPlayers);
     setTeamB(teamBPlayers);
+    setCaptainA(randomCaptainA);
+    setCaptainB(randomCaptainB);
     setShowTeams(true);
   };
 
@@ -169,8 +177,14 @@ export default function TeamGenerator() {
       }
     }
     
+    // Select random captains
+    const randomCaptainA = teamA[Math.floor(Math.random() * teamA.length)];
+    const randomCaptainB = teamB[Math.floor(Math.random() * teamB.length)];
+    
     setTeamA(teamA);
     setTeamB(teamB);
+    setCaptainA(randomCaptainA);
+    setCaptainB(randomCaptainB);
     setShowTeams(true);
   };
 
@@ -279,7 +293,7 @@ export default function TeamGenerator() {
         <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
           <div>
             <h1 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 tracking-tight">
-              ⚽ Team Generator
+              ⚽ Zemer Teams Generator
             </h1>
             <p className="text-emerald-200/60 mt-2 text-lg">Create perfectly balanced teams</p>
           </div>
@@ -406,19 +420,39 @@ export default function TeamGenerator() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Team A */}
               <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/20 rounded-2xl p-6 border border-blue-500/30">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-2">
                   <h2 className="text-2xl font-black text-blue-300">🔵 Team A</h2>
                   <div className="px-4 py-2 bg-blue-500/30 rounded-lg">
                     <span className="text-blue-200">Total Power: </span>
                     <span className="text-blue-300 font-bold">{calculateTotalPower(teamA)}</span>
                   </div>
                 </div>
+                {/* Captain Badge */}
+                {captainA && (
+                  <div className="mb-4 px-4 py-2 bg-yellow-500/20 border border-yellow-500/40 rounded-lg flex items-center gap-2">
+                    <span className="text-xl">👑</span>
+                    <span className="text-yellow-300 font-semibold">Captain: {captainA.firstname} {captainA.lastname}</span>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {teamA.map(player => (
-                    <div key={player.id} className="flex items-center gap-4 bg-blue-950/40 rounded-xl p-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-600/50 flex items-center justify-center text-lg">⚽</div>
+                    <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
+                      captainA && player.id === captainA.id 
+                        ? 'bg-yellow-900/30 border border-yellow-500/40' 
+                        : 'bg-blue-950/40'
+                    }`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                        captainA && player.id === captainA.id 
+                          ? 'bg-yellow-500/50' 
+                          : 'bg-blue-600/50'
+                      }`}>
+                        {captainA && player.id === captainA.id ? '👑' : '⚽'}
+                      </div>
                       <div className="flex-1">
-                        <div className="font-semibold text-white">{player.firstname} {player.lastname}</div>
+                        <div className="font-semibold text-white">
+                          {player.firstname} {player.lastname}
+                          {captainA && player.id === captainA.id && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
+                        </div>
                       </div>
                       <div className="px-3 py-1 bg-blue-600/40 rounded-lg text-blue-200 font-bold">{player.power}</div>
                     </div>
@@ -428,19 +462,39 @@ export default function TeamGenerator() {
 
               {/* Team B */}
               <div className="bg-gradient-to-br from-rose-900/40 to-rose-800/20 rounded-2xl p-6 border border-rose-500/30">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-2">
                   <h2 className="text-2xl font-black text-rose-300">🔴 Team B</h2>
                   <div className="px-4 py-2 bg-rose-500/30 rounded-lg">
                     <span className="text-rose-200">Total Power: </span>
                     <span className="text-rose-300 font-bold">{calculateTotalPower(teamB)}</span>
                   </div>
                 </div>
+                {/* Captain Badge */}
+                {captainB && (
+                  <div className="mb-4 px-4 py-2 bg-yellow-500/20 border border-yellow-500/40 rounded-lg flex items-center gap-2">
+                    <span className="text-xl">👑</span>
+                    <span className="text-yellow-300 font-semibold">Captain: {captainB.firstname} {captainB.lastname}</span>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {teamB.map(player => (
-                    <div key={player.id} className="flex items-center gap-4 bg-rose-950/40 rounded-xl p-3">
-                      <div className="w-10 h-10 rounded-full bg-rose-600/50 flex items-center justify-center text-lg">⚽</div>
+                    <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
+                      captainB && player.id === captainB.id 
+                        ? 'bg-yellow-900/30 border border-yellow-500/40' 
+                        : 'bg-rose-950/40'
+                    }`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
+                        captainB && player.id === captainB.id 
+                          ? 'bg-yellow-500/50' 
+                          : 'bg-rose-600/50'
+                      }`}>
+                        {captainB && player.id === captainB.id ? '👑' : '⚽'}
+                      </div>
                       <div className="flex-1">
-                        <div className="font-semibold text-white">{player.firstname} {player.lastname}</div>
+                        <div className="font-semibold text-white">
+                          {player.firstname} {player.lastname}
+                          {captainB && player.id === captainB.id && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
+                        </div>
                       </div>
                       <div className="px-3 py-1 bg-rose-600/40 rounded-lg text-rose-200 font-bold">{player.power}</div>
                     </div>
