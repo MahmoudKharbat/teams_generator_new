@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Link } from 'react-router-dom';
+import html2canvas from 'html2canvas';
 
 export default function TeamGenerator() {
   const [players, setPlayers] = useState([]);
@@ -13,6 +14,27 @@ export default function TeamGenerator() {
   const [showTeams, setShowTeams] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const screenshotRef = useRef(null);
+
+  // Download teams as screenshot
+  const downloadTeamsImage = async () => {
+    if (!screenshotRef.current) return;
+    
+    try {
+      const canvas = await html2canvas(screenshotRef.current, {
+        backgroundColor: '#0f172a',
+        scale: 2,
+      });
+      
+      const link = document.createElement('a');
+      link.download = `zemer-teams-${new Date().toISOString().split('T')[0]}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (error) {
+      console.error('Error generating screenshot:', error);
+      alert('Failed to download image. Please try again.');
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -417,6 +439,16 @@ export default function TeamGenerator() {
               </span>
             </div>
 
+            {/* Download Button */}
+            <div className="text-center mb-6">
+              <button
+                onClick={downloadTeamsImage}
+                className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-cyan-500/30 flex items-center gap-2 mx-auto"
+              >
+                📥 Download Teams Image
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Team A */}
               <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/20 rounded-2xl p-6 border border-blue-500/30">
@@ -485,6 +517,66 @@ export default function TeamGenerator() {
                       <div className="px-3 py-1 bg-rose-600/40 rounded-lg text-rose-200 font-bold">{player.power}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Hidden Screenshot Area (without power info) */}
+            <div className="absolute left-[-9999px]">
+              <div ref={screenshotRef} className="p-8 bg-slate-900" style={{ width: '800px' }}>
+                <h1 className="text-3xl font-black text-center text-emerald-400 mb-6">⚽ Zemer Teams</h1>
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Team A for Screenshot */}
+                  <div className="bg-blue-900/60 rounded-2xl p-5 border border-blue-500/50">
+                    <h2 className="text-xl font-black text-blue-300 mb-4 text-center">🔵 Team A</h2>
+                    <div className="space-y-2">
+                      {teamA.map(player => (
+                        <div key={player.id} className={`flex items-center gap-3 rounded-lg p-2 ${
+                          captainA && player.id === captainA.id 
+                            ? 'bg-yellow-900/40 border border-yellow-500/50' 
+                            : 'bg-blue-950/60'
+                        }`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                            captainA && player.id === captainA.id 
+                              ? 'bg-yellow-500/60' 
+                              : 'bg-blue-600/60'
+                          }`}>
+                            {captainA && player.id === captainA.id ? '👑' : '⚽'}
+                          </div>
+                          <span className="font-semibold text-white text-sm">
+                            {player.firstname} {player.lastname}
+                            {captainA && player.id === captainA.id && <span className="ml-1 text-yellow-400 text-xs">(C)</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Team B for Screenshot */}
+                  <div className="bg-rose-900/60 rounded-2xl p-5 border border-rose-500/50">
+                    <h2 className="text-xl font-black text-rose-300 mb-4 text-center">🔴 Team B</h2>
+                    <div className="space-y-2">
+                      {teamB.map(player => (
+                        <div key={player.id} className={`flex items-center gap-3 rounded-lg p-2 ${
+                          captainB && player.id === captainB.id 
+                            ? 'bg-yellow-900/40 border border-yellow-500/50' 
+                            : 'bg-rose-950/60'
+                        }`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${
+                            captainB && player.id === captainB.id 
+                              ? 'bg-yellow-500/60' 
+                              : 'bg-rose-600/60'
+                          }`}>
+                            {captainB && player.id === captainB.id ? '👑' : '⚽'}
+                          </div>
+                          <span className="font-semibold text-white text-sm">
+                            {player.firstname} {player.lastname}
+                            {captainB && player.id === captainB.id && <span className="ml-1 text-yellow-400 text-xs">(C)</span>}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
