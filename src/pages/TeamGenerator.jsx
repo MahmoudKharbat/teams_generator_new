@@ -1,368 +1,170 @@
-import { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import html2canvas from 'html2canvas';
+import { fullName, usePlayers } from '../hooks/usePlayers';
+import { averagePower, generateTeams, MODES, SHUFFLE_TOLERANCE, totalPower } from '../lib/teamBalancer';
+import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
+import TeamCard from '../components/TeamCard';
+import TeamsImage from '../components/TeamsImage';
+
+const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
+
+const initials = (player) => `${player.firstname[0] ?? ''}${player.lastname[0] ?? ''}`.toUpperCase() || '?';
+
+// Captain first, then by name, so shared lists don't reveal the power ranking.
+const sharingOrder = (team, captainId) =>
+  [...team].sort((a, b) => (b.id === captainId) - (a.id === captainId) || fullName(a).localeCompare(fullName(b)));
+
+const teamText = (title, team, captainId) =>
+  [title, ...sharingOrder(team, captainId).map((p, i) => `${i + 1}. ${fullName(p)}${p.id === captainId ? ' (C)' : ''}`)].join('\n');
+
+function resultDescription({ mode, optionCount }) {
+  if (mode === MODES.balanced) {
+    return optionCount > 1
+      ? `The fairest possible split, picked from ${optionCount} equally fair options.`
+      : 'The fairest possible split.';
+  }
+  return optionCount > 1
+    ? `Picked at random from ${optionCount} splits within ${SHUFFLE_TOLERANCE} points of the fairest.`
+    : 'Only one split is close enough to the fairest.';
+}
 
 export default function TeamGenerator() {
-  const [players, setPlayers] = useState([]);
-  const [selectedPlayers, setSelectedPlayers] = useState([]);
-  const [teamA, setTeamA] = useState([]);
-  const [teamB, setTeamB] = useState([]);
-  const [captainA, setCaptainA] = useState(null);
-  const [captainB, setCaptainB] = useState(null);
-  const [showTeams, setShowTeams] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const screenshotRef = useRef(null);
+  const { players, loading, error } = usePlayers();
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [query, setQuery] = useState('');
+  const [result, setResult] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  const imageRef = useRef(null);
+  const resultsRef = useRef(null);
 
-  // Download teams as screenshot
-  const downloadTeamsImage = async () => {
-    if (!screenshotRef.current) return;
-    
-    // Temporarily make the screenshot area visible
-    const element = screenshotRef.current;
+  // Deleted players drop out automatically because selection is resolved against the live list.
+  const selectedPlayers = useMemo(() => players.filter((p) => selectedIds.has(p.id)), [players, selectedIds]);
+
+  const visiblePlayers = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return q ? players.filter((p) => fullName(p).toLowerCase().includes(q)) : players;
+  }, [players, query]);
+
+  useEffect(() => {
+    const el = resultsRef.current;
+    if (!result || !el) return;
+    const { top } = el.getBoundingClientRect();
+    if (top < 0 || top > window.innerHeight * 0.6) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [result]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
+  const updateSelection = (update) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      update(next);
+      return next;
+    });
+    setResult(null);
+  };
+
+  const togglePlayer = (id) => updateSelection((s) => (s.has(id) ? s.delete(id) : s.add(id)));
+  const selectVisible = () => updateSelection((s) => visiblePlayers.forEach((p) => s.add(p.id)));
+  const clearSelection = () => updateSelection((s) => s.clear());
+
+  const generate = (mode) => {
+    if (selectedPlayers.length < 2) return;
+    const teams = generateTeams(selectedPlayers, { mode, avoidKey: result?.key });
+    setResult({
+      ...teams,
+      mode,
+      captainA: pickRandom(teams.teamA).id,
+      captainB: pickRandom(teams.teamB).id,
+    });
+  };
+
+  const copyAsText = async () => {
+    const text = [
+      '⚽ Zemer Teams',
+      '',
+      teamText('🔵 Team A', result.teamA, result.captainA),
+      '',
+      teamText('🔴 Team B', result.teamB, result.captainB),
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      setNotice('Teams copied to clipboard');
+    } catch {
+      setNotice('Your browser blocked clipboard access');
+    }
+  };
+
+  const downloadImage = async () => {
+    const element = imageRef.current;
+    if (!element) return;
+    setDownloading(true);
+    // Temporarily bring the off-screen image into the viewport so html2canvas renders it
     const originalStyle = element.parentElement.style.cssText;
     element.parentElement.style.cssText = 'position: fixed; top: 0; left: 0; z-index: -1; opacity: 0;';
-    
     try {
-      const canvas = await html2canvas(element, {
-        backgroundColor: '#0f172a',
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-      
+      const { default: html2canvas } = await import('html2canvas'); // loaded on demand to keep the initial bundle small
+      const canvas = await html2canvas(element, { backgroundColor: '#0f172a', scale: 2, useCORS: true, logging: false });
       const link = document.createElement('a');
       link.download = `zemer-teams-${new Date().toISOString().split('T')[0]}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
-    } catch (error) {
-      console.error('Error generating screenshot:', error);
+    } catch (err) {
+      console.error('Error generating screenshot:', err);
+      setNotice('Could not create the image');
     } finally {
-      // Restore original style
       element.parentElement.style.cssText = originalStyle;
+      setDownloading(false);
     }
   };
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'new_players'), 
-      (snapshot) => {
-        const playersData = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setPlayers(playersData);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        console.error('Firebase error:', err);
-        setError(err.message);
-        setLoading(false);
-      }
-    );
+  if (loading) return <LoadingScreen />;
+  if (error) return <ErrorScreen message={error} />;
 
-    return () => unsubscribe();
-  }, []);
+  const count = selectedPlayers.length;
+  const selectionHint =
+    count < 2
+      ? 'Select at least 2 players'
+      : count % 2
+        ? `${Math.floor(count / 2)} vs ${Math.ceil(count / 2)}: the smaller team gets stronger players`
+        : `${count / 2} vs ${count / 2}`;
 
-  const togglePlayerSelection = (playerId) => {
-    setSelectedPlayers(prev => 
-      prev.includes(playerId) 
-        ? prev.filter(id => id !== playerId)
-        : [...prev, playerId]
-    );
-    setShowTeams(false);
-  };
-
-  const selectAll = () => {
-    setSelectedPlayers(players.map(p => p.id));
-    setShowTeams(false);
-  };
-
-  const clearSelection = () => {
-    setSelectedPlayers([]);
-    setShowTeams(false);
-  };
-
-  // Shuffle array helper function
-  const shuffleArray = (array) => {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-  };
-
-  // Algorithm to balance teams with minimal power difference
-  const generateBalancedTeams = () => {
-    const selected = players.filter(p => selectedPlayers.includes(p.id));
-    
-    if (selected.length < 2) {
-      alert('Please select at least 2 players');
-      return;
-    }
-
-    if (selected.length % 2 !== 0) {
-      alert('Please select an even number of players');
-      return;
-    }
-
-    // Sort players by power descending
-    const sorted = [...selected].sort((a, b) => b.power - a.power);
-    const teamSize = sorted.length / 2;
-    
-    // Use dynamic programming approach for optimal team balancing
-    const n = sorted.length;
-    const totalPower = sorted.reduce((sum, p) => sum + p.power, 0);
-    const targetPower = totalPower / 2;
-    
-    // DP to find the subset closest to half the total power
-    // dp[i][j][k] = best subset of k players from first i players with power closest to j
-    const bestTeam = findOptimalTeam(sorted, teamSize, targetPower);
-    
-    const teamAPlayers = bestTeam;
-    const teamBPlayers = sorted.filter(p => !bestTeam.includes(p));
-    
-    // Select random captains
-    const randomCaptainA = teamAPlayers[Math.floor(Math.random() * teamAPlayers.length)];
-    const randomCaptainB = teamBPlayers[Math.floor(Math.random() * teamBPlayers.length)];
-    
-    setTeamA(teamAPlayers);
-    setTeamB(teamBPlayers);
-    setCaptainA(randomCaptainA);
-    setCaptainB(randomCaptainB);
-    setShowTeams(true);
-  };
-
-  // Algorithm to generate approximate balanced teams with randomization
-  const generateApproximateTeams = () => {
-    const selected = players.filter(p => selectedPlayers.includes(p.id));
-    
-    if (selected.length < 2) {
-      alert('Please select at least 2 players');
-      return;
-    }
-
-    if (selected.length % 2 !== 0) {
-      alert('Please select an even number of players');
-      return;
-    }
-
-    const teamSize = selected.length / 2;
-    
-    // Shuffle players first to get different combinations each time
-    const shuffled = shuffleArray(selected);
-    
-    // Start with random assignment
-    let teamA = [];
-    let teamB = [];
-    let powerA = 0;
-    let powerB = 0;
-    
-    // Assign players trying to balance, but with shuffled order
-    for (const player of shuffled) {
-      if (teamA.length < teamSize && (powerA <= powerB || teamB.length >= teamSize)) {
-        teamA.push(player);
-        powerA += player.power;
-      } else {
-        teamB.push(player);
-        powerB += player.power;
-      }
-    }
-    
-    // Limited local search: only do a few iterations to keep variety
-    const maxIterations = 3;
-    for (let iter = 0; iter < maxIterations; iter++) {
-      let bestSwap = null;
-      let bestImprovement = 0;
-      
-      // Find the best single swap
-      for (let i = 0; i < teamA.length; i++) {
-        for (let j = 0; j < teamB.length; j++) {
-          const currentDiff = Math.abs(powerA - powerB);
-          const newPowerA = powerA - teamA[i].power + teamB[j].power;
-          const newPowerB = powerB - teamB[j].power + teamA[i].power;
-          const newDiff = Math.abs(newPowerA - newPowerB);
-          const improvement = currentDiff - newDiff;
-          
-          // Only consider swaps that improve significantly (threshold adds randomness)
-          if (improvement > bestImprovement + Math.random() * 2) {
-            bestSwap = { i, j, newPowerA, newPowerB };
-            bestImprovement = improvement;
-          }
-        }
-      }
-      
-      // Apply the best swap if found
-      if (bestSwap && bestImprovement > 1) {
-        const temp = teamA[bestSwap.i];
-        teamA[bestSwap.i] = teamB[bestSwap.j];
-        teamB[bestSwap.j] = temp;
-        powerA = bestSwap.newPowerA;
-        powerB = bestSwap.newPowerB;
-      } else {
-        break;
-      }
-    }
-    
-    // Select random captains
-    const randomCaptainA = teamA[Math.floor(Math.random() * teamA.length)];
-    const randomCaptainB = teamB[Math.floor(Math.random() * teamB.length)];
-    
-    setTeamA(teamA);
-    setTeamB(teamB);
-    setCaptainA(randomCaptainA);
-    setCaptainB(randomCaptainB);
-    setShowTeams(true);
-  };
-
-  // Find optimal team using subset sum with constraint on team size
-  const findOptimalTeam = (players, teamSize, targetPower) => {
-    const n = players.length;
-    const maxPower = players.reduce((sum, p) => sum + p.power, 0);
-    
-    // dp[power][count] = array of indices that achieve this power with this count
-    // We'll use a simpler greedy + local search approach for efficiency
-    
-    // Start with greedy assignment
-    let teamA = [];
-    let teamB = [];
-    let powerA = 0;
-    let powerB = 0;
-    
-    // Sort by power descending and alternate assignment
-    const sorted = [...players].sort((a, b) => b.power - a.power);
-    
-    for (const player of sorted) {
-      if (teamA.length < teamSize && (powerA <= powerB || teamB.length >= teamSize)) {
-        teamA.push(player);
-        powerA += player.power;
-      } else {
-        teamB.push(player);
-        powerB += player.power;
-      }
-    }
-    
-    // Local search: try swapping players to minimize difference
-    let improved = true;
-    while (improved) {
-      improved = false;
-      
-      for (let i = 0; i < teamA.length; i++) {
-        for (let j = 0; j < teamB.length; j++) {
-          const currentDiff = Math.abs(powerA - powerB);
-          const newPowerA = powerA - teamA[i].power + teamB[j].power;
-          const newPowerB = powerB - teamB[j].power + teamA[i].power;
-          const newDiff = Math.abs(newPowerA - newPowerB);
-          
-          if (newDiff < currentDiff) {
-            // Swap players
-            const temp = teamA[i];
-            teamA[i] = teamB[j];
-            teamB[j] = temp;
-            powerA = newPowerA;
-            powerB = newPowerB;
-            improved = true;
-          }
-        }
-      }
-    }
-    
-    return teamA;
-  };
-
-  const calculateTotalPower = (team) => {
-    return team.reduce((sum, p) => sum + p.power, 0);
-  };
-
-  const getPowerDifference = () => {
-    const powerA = calculateTotalPower(teamA);
-    const powerB = calculateTotalPower(teamB);
-    return Math.abs(powerA - powerB).toFixed(1);
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-emerald-400 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-emerald-300">Connecting to Firebase...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 flex items-center justify-center p-4">
-        <div className="bg-red-900/30 border border-red-500/50 rounded-2xl p-8 max-w-lg text-center">
-          <div className="text-5xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-red-300 mb-4">Firebase Connection Error</h2>
-          <p className="text-red-200 mb-4">{error}</p>
-          <div className="text-left bg-slate-800/50 rounded-lg p-4 text-sm text-slate-300">
-            <p className="font-bold mb-2">To fix this:</p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Go to Firebase Console</li>
-              <li>Click on Firestore Database</li>
-              <li>Create database (if not created)</li>
-              <li>Start in test mode</li>
-              <li>Refresh this page</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const totalA = result ? totalPower(result.teamA) : 0;
+  const totalB = result ? totalPower(result.teamB) : 0;
+  const shareA = result && totalA + totalB > 0 ? (totalA / (totalA + totalB)) * 100 : 50;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 p-4 sm:p-8">
-      {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 px-4 py-6 sm:p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 tracking-tight">
-              ⚽ Zemer Teams Generator
+        {/* Header */}
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+          <div className="text-center sm:text-left">
+            <h1 className="text-4xl sm:text-5xl font-black tracking-tight">
+              <span aria-hidden="true">⚽ </span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
+                Zemer Teams Generator
+              </span>
             </h1>
-            <p className="text-emerald-200/60 mt-2 text-lg">Create perfectly balanced teams</p>
+            <p className="text-emerald-200/60 mt-2 text-lg">Pick who's playing, get fair teams</p>
           </div>
-          <Link 
+          <Link
             to="/admin"
-            className="px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-emerald-300 rounded-xl font-semibold transition-all duration-300 border border-emerald-500/30 hover:border-emerald-400/60 shadow-lg hover:shadow-emerald-500/20"
+            className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-emerald-300 rounded-xl font-semibold transition-all duration-300 border border-emerald-500/30 hover:border-emerald-400/60"
           >
             ⚙️ Admin Console
           </Link>
-        </div>
+        </header>
 
-        {/* Selection Controls */}
-        <div className="flex flex-wrap gap-3 mb-6">
-          <button
-            onClick={selectAll}
-            className="px-5 py-2.5 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded-lg font-medium transition-all duration-200 border border-emerald-500/40"
-          >
-            Select All
-          </button>
-          <button
-            onClick={clearSelection}
-            className="px-5 py-2.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 rounded-lg font-medium transition-all duration-200 border border-rose-500/40"
-          >
-            Clear Selection
-          </button>
-          <div className="flex-1"></div>
-          <div className="px-4 py-2.5 bg-slate-800/60 rounded-lg text-emerald-200">
-            Selected: <span className="font-bold text-emerald-400">{selectedPlayers.length}</span> / {players.length}
-          </div>
-        </div>
-
-        {/* Players Grid */}
         {players.length === 0 ? (
           <div className="bg-slate-800/40 backdrop-blur-sm rounded-2xl p-12 text-center border border-slate-700/50">
             <div className="text-6xl mb-4">🏟️</div>
             <h3 className="text-2xl font-bold text-slate-300 mb-2">No Players Yet</h3>
             <p className="text-slate-400 mb-6">Add some players in the admin console to get started</p>
-            <Link 
+            <Link
               to="/admin"
               className="inline-block px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-semibold transition-all duration-300 shadow-lg shadow-emerald-600/30"
             >
@@ -370,280 +172,190 @@ export default function TeamGenerator() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-8">
-            {players.map(player => (
-              <div
-                key={player.id}
-                onClick={() => togglePlayerSelection(player.id)}
-                className={`relative cursor-pointer rounded-xl p-5 transition-all duration-300 transform hover:scale-[1.02] ${
-                  selectedPlayers.includes(player.id)
-                    ? 'bg-gradient-to-br from-emerald-600/40 to-teal-600/30 border-2 border-emerald-400 shadow-lg shadow-emerald-500/20'
-                    : 'bg-slate-800/50 border border-slate-700/50 hover:border-slate-600'
-                }`}
-              >
-                {/* Selection Indicator */}
-                <div className={`absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center transition-all duration-200 ${
-                  selectedPlayers.includes(player.id)
-                    ? 'bg-emerald-400 text-slate-900'
-                    : 'bg-slate-700 text-slate-500'
-                }`}>
-                  {selectedPlayers.includes(player.id) ? '✓' : ''}
+          <>
+            {/* Player selection */}
+            <section className="mb-6">
+              <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <div className="relative flex-1">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">🔍</span>
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search players"
+                    aria-label="Search players"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-800/60 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
                 </div>
-                
-                {/* Player Avatar */}
-                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-2xl mb-3 shadow-lg">
-                  ⚽
-                </div>
-                
-                {/* Player Info */}
-                <h3 className="text-xl font-bold text-white mb-1">
-                  {player.firstname} {player.lastname}
-                </h3>
-                
-                {/* Power Bar */}
-                <div className="mt-3">
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-400">Power</span>
-                    <span className="text-emerald-400 font-bold">{player.power}</span>
-                  </div>
-                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-500"
-                      style={{ width: `${Math.min(player.power, 100)}%` }}
-                    ></div>
-                  </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={selectVisible}
+                    className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 rounded-lg font-medium transition-all duration-200 border border-emerald-500/40"
+                  >
+                    {query ? 'Select shown' : 'Select all'}
+                  </button>
+                  <button
+                    onClick={clearSelection}
+                    disabled={count === 0}
+                    className="flex-1 sm:flex-none px-5 py-2.5 bg-rose-600/20 hover:bg-rose-600/40 disabled:opacity-40 disabled:hover:bg-rose-600/20 text-rose-300 rounded-lg font-medium transition-all duration-200 border border-rose-500/40"
+                  >
+                    Clear
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* Generate Buttons */}
-        {players.length > 0 && (
-          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8">
-            <button
-              onClick={generateBalancedTeams}
-              disabled={selectedPlayers.length < 2}
-              className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-600 text-white text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl hover:shadow-emerald-500/30 disabled:shadow-none disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
-            >
-              ⚡ Generate Balanced Teams
-            </button>
-            <button
-              onClick={generateApproximateTeams}
-              disabled={selectedPlayers.length < 2}
-              className="px-8 py-4 bg-gradient-to-r from-violet-600 to-purple-500 hover:from-violet-500 hover:to-purple-400 disabled:from-slate-700 disabled:to-slate-600 text-white text-lg font-bold rounded-2xl transition-all duration-300 shadow-xl hover:shadow-violet-500/30 disabled:shadow-none disabled:cursor-not-allowed transform hover:scale-105 disabled:hover:scale-100"
-            >
-              🎲 Generate Approximate Teams
-            </button>
-          </div>
-        )}
-
-        {/* Teams Display */}
-        {showTeams && (
-          <div className="animate-fadeIn">
-            {/* Power Difference Banner */}
-            <div className="bg-gradient-to-r from-amber-600/20 via-orange-500/20 to-amber-600/20 border border-amber-500/40 rounded-xl p-4 mb-6 text-center">
-              <span className="text-amber-300 text-lg">
-                Power Difference: <span className="font-black text-2xl text-amber-400">{getPowerDifference()}</span>
-              </span>
-            </div>
-
-            {/* Download Button */}
-            <div className="text-center mb-6">
-              <button
-                onClick={downloadTeamsImage}
-                className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-cyan-500/30 flex items-center gap-2 mx-auto"
-              >
-                📥 Download Teams Image
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Team A */}
-              <div className="bg-gradient-to-br from-blue-900/40 to-blue-800/20 rounded-2xl p-6 border border-blue-500/30">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-2xl font-black text-blue-300">🔵 Team A</h2>
-                  <div className="px-4 py-2 bg-blue-500/30 rounded-lg">
-                    <span className="text-blue-200">Total Power: </span>
-                    <span className="text-blue-300 font-bold">{calculateTotalPower(teamA)}</span>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {teamA.map(player => (
-                    <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
-                      captainA && player.id === captainA.id 
-                        ? 'bg-yellow-900/30 border border-yellow-500/40' 
-                        : 'bg-blue-950/40'
-                    }`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                        captainA && player.id === captainA.id 
-                          ? 'bg-yellow-500/50' 
-                          : 'bg-blue-600/50'
-                      }`}>
-                        {captainA && player.id === captainA.id ? '👑' : '⚽'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-white">
-                          {player.firstname} {player.lastname}
-                          {captainA && player.id === captainA.id && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
+              {visiblePlayers.length === 0 ? (
+                <p className="text-slate-400 text-center py-8">No players match “{query}”.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {visiblePlayers.map((player) => {
+                    const selected = selectedIds.has(player.id);
+                    return (
+                      <button
+                        key={player.id}
+                        type="button"
+                        onClick={() => togglePlayer(player.id)}
+                        aria-pressed={selected}
+                        className={`flex items-center gap-3 rounded-xl p-3 text-left transition-all duration-200 border ${
+                          selected
+                            ? 'bg-emerald-600/25 border-emerald-400/80 shadow-lg shadow-emerald-500/10'
+                            : 'bg-slate-800/50 border-slate-700/50 hover:border-slate-500'
+                        }`}
+                      >
+                        <div
+                          className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                            selected ? 'bg-emerald-400 text-slate-900' : 'bg-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {selected ? '✓' : initials(player)}
                         </div>
-                      </div>
-                      <div className="px-3 py-1 bg-blue-600/40 rounded-lg text-blue-200 font-bold">{player.power}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Team B */}
-              <div className="bg-gradient-to-br from-rose-900/40 to-rose-800/20 rounded-2xl p-6 border border-rose-500/30">
-                <div className="flex items-center justify-between mb-2">
-                  <h2 className="text-2xl font-black text-rose-300">🔴 Team B</h2>
-                  <div className="px-4 py-2 bg-rose-500/30 rounded-lg">
-                    <span className="text-rose-200">Total Power: </span>
-                    <span className="text-rose-300 font-bold">{calculateTotalPower(teamB)}</span>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {teamB.map(player => (
-                    <div key={player.id} className={`flex items-center gap-4 rounded-xl p-3 ${
-                      captainB && player.id === captainB.id 
-                        ? 'bg-yellow-900/30 border border-yellow-500/40' 
-                        : 'bg-rose-950/40'
-                    }`}>
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${
-                        captainB && player.id === captainB.id 
-                          ? 'bg-yellow-500/50' 
-                          : 'bg-rose-600/50'
-                      }`}>
-                        {captainB && player.id === captainB.id ? '👑' : '⚽'}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-semibold text-white">
-                          {player.firstname} {player.lastname}
-                          {captainB && player.id === captainB.id && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
-                        </div>
-                      </div>
-                      <div className="px-3 py-1 bg-rose-600/40 rounded-lg text-rose-200 font-bold">{player.power}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Hidden Screenshot Area (without power info) */}
-            <div style={{ position: 'absolute', left: '-9999px', top: '0' }}>
-              <div ref={screenshotRef} style={{ 
-                padding: '32px', 
-                backgroundColor: '#0f172a', 
-                width: '800px',
-                fontFamily: 'system-ui, -apple-system, sans-serif'
-              }}>
-                <h1 style={{ 
-                  fontSize: '28px', 
-                  fontWeight: '900', 
-                  textAlign: 'center', 
-                  color: '#34d399', 
-                  marginBottom: '24px' 
-                }}>⚽ Zemer Teams</h1>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-                  {/* Team A for Screenshot */}
-                  <div style={{ 
-                    backgroundColor: 'rgba(30, 58, 138, 0.6)', 
-                    borderRadius: '16px', 
-                    padding: '20px', 
-                    border: '1px solid rgba(59, 130, 246, 0.5)' 
-                  }}>
-                    <h2 style={{ 
-                      fontSize: '20px', 
-                      fontWeight: '900', 
-                      color: '#93c5fd', 
-                      marginBottom: '16px', 
-                      textAlign: 'center' 
-                    }}>🔵 Team A</h2>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {teamA.map(player => (
-                        <div key={player.id} style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '12px', 
-                          borderRadius: '8px', 
-                          padding: '8px',
-                          backgroundColor: captainA && player.id === captainA.id ? 'rgba(113, 63, 18, 0.4)' : 'rgba(23, 37, 84, 0.6)',
-                          border: captainA && player.id === captainA.id ? '1px solid rgba(234, 179, 8, 0.5)' : 'none'
-                        }}>
-                          <div style={{ 
-                            width: '32px', 
-                            height: '32px', 
-                            borderRadius: '50%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontSize: '14px',
-                            backgroundColor: captainA && player.id === captainA.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(37, 99, 235, 0.6)'
-                          }}>
-                            {captainA && player.id === captainA.id ? '👑' : '⚽'}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-semibold text-white truncate">{fullName(player)}</span>
+                            <span className="text-emerald-400 font-bold text-sm">{player.power}</span>
                           </div>
-                          <span style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
-                            {player.firstname} {player.lastname}
-                            {captainA && player.id === captainA.id && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>(C)</span>}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Team B for Screenshot */}
-                  <div style={{ 
-                    backgroundColor: 'rgba(136, 19, 55, 0.6)', 
-                    borderRadius: '16px', 
-                    padding: '20px', 
-                    border: '1px solid rgba(244, 63, 94, 0.5)' 
-                  }}>
-                    <h2 style={{ 
-                      fontSize: '20px', 
-                      fontWeight: '900', 
-                      color: '#fda4af', 
-                      marginBottom: '16px', 
-                      textAlign: 'center' 
-                    }}>🔴 Team B</h2>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {teamB.map(player => (
-                        <div key={player.id} style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '12px', 
-                          borderRadius: '8px', 
-                          padding: '8px',
-                          backgroundColor: captainB && player.id === captainB.id ? 'rgba(113, 63, 18, 0.4)' : 'rgba(76, 5, 25, 0.6)',
-                          border: captainB && player.id === captainB.id ? '1px solid rgba(234, 179, 8, 0.5)' : 'none'
-                        }}>
-                          <div style={{ 
-                            width: '32px', 
-                            height: '32px', 
-                            borderRadius: '50%', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            fontSize: '14px',
-                            backgroundColor: captainB && player.id === captainB.id ? 'rgba(234, 179, 8, 0.6)' : 'rgba(225, 29, 72, 0.6)'
-                          }}>
-                            {captainB && player.id === captainB.id ? '👑' : '⚽'}
+                          <div className="mt-1.5 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400"
+                              style={{ width: `${Math.min(player.power, 100)}%` }}
+                            ></div>
                           </div>
-                          <span style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
-                            {player.firstname} {player.lastname}
-                            {captainB && player.id === captainB.id && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>(C)</span>}
-                          </span>
                         </div>
-                      ))}
-                    </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Action bar: sticks to the bottom of the screen while scrolling the player list */}
+            <div className="sticky bottom-4 z-20 mb-8">
+              <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 bg-slate-900/85 backdrop-blur-md border border-slate-700/60 rounded-2xl p-3 sm:p-4 shadow-2xl">
+                <div className="flex-1 text-center sm:text-left">
+                  <div className="text-white font-semibold">
+                    <span className="text-emerald-400 font-bold">{count}</span> / {players.length} selected
+                    {count > 0 && <span className="text-slate-400 font-normal"> · avg power {averagePower(selectedPlayers)}</span>}
                   </div>
+                  <div className="text-slate-400 text-sm">{selectionHint}</div>
+                </div>
+                <div className="flex gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={() => generate(MODES.balanced)}
+                    disabled={count < 2}
+                    title="The fairest split possible"
+                    className="flex-1 sm:flex-none whitespace-nowrap px-4 sm:px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:from-slate-700 disabled:to-slate-600 disabled:text-slate-400 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-emerald-500/30 disabled:shadow-none disabled:cursor-not-allowed"
+                  >
+                    ⚖️ Balanced
+                  </button>
+                  <button
+                    onClick={() => generate(MODES.shuffle)}
+                    disabled={count < 2}
+                    title={`A random split within ${SHUFFLE_TOLERANCE} points of the fairest`}
+                    className="flex-1 sm:flex-none whitespace-nowrap px-4 sm:px-5 py-3 bg-gradient-to-r from-violet-600 to-purple-500 hover:from-violet-500 hover:to-purple-400 disabled:from-slate-700 disabled:to-slate-600 disabled:text-slate-400 text-white font-bold rounded-xl transition-all duration-300 shadow-lg hover:shadow-violet-500/30 disabled:shadow-none disabled:cursor-not-allowed"
+                  >
+                    🎲 Shuffle
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
+
+            {/* Results */}
+            {result && (
+              <section ref={resultsRef} className="animate-fadeIn scroll-mt-4">
+                <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 sm:p-5 mb-6">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                    <div className="flex-1">
+                      <div className="flex items-baseline gap-3">
+                        <span className="text-slate-300">Power difference</span>
+                        <span className="text-3xl font-black text-amber-400">{result.powerDiff}</span>
+                      </div>
+                      <p className="text-slate-400 text-sm mt-1">{resultDescription(result)}</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-sm sm:flex sm:text-base">
+                      <button
+                        onClick={() => generate(result.mode)}
+                        disabled={result.optionCount <= 1}
+                        title={result.optionCount <= 1 ? 'There is no other option this fair' : 'Show a different option'}
+                        className="px-3 sm:px-4 py-2.5 bg-slate-700/70 hover:bg-slate-600 disabled:opacity-40 disabled:hover:bg-slate-700/70 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all duration-200"
+                      >
+                        ↻ Try another
+                      </button>
+                      <button
+                        onClick={copyAsText}
+                        className="px-3 sm:px-4 py-2.5 bg-slate-700/70 hover:bg-slate-600 text-white rounded-xl font-semibold transition-all duration-200"
+                      >
+                        📋 Copy text
+                      </button>
+                      <button
+                        onClick={downloadImage}
+                        disabled={downloading}
+                        className="px-3 sm:px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-blue-500 hover:from-cyan-500 hover:to-blue-400 disabled:opacity-60 text-white font-semibold rounded-xl transition-all duration-200"
+                      >
+                        {downloading ? 'Saving…' : '📥 Save image'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Balance bar: the line in the middle marks a perfect 50/50 */}
+                  <div className="mt-4">
+                    <div className="relative flex h-3 rounded-full overflow-hidden bg-slate-700">
+                      <div className="bg-blue-500 transition-all duration-500" style={{ width: `${shareA}%` }}></div>
+                      <div className="bg-rose-500 flex-1"></div>
+                      <div className="absolute left-1/2 top-0 h-full w-0.5 -translate-x-1/2 bg-white/80"></div>
+                    </div>
+                    <div className="flex justify-between text-xs mt-1.5 text-slate-400">
+                      <span>🔵 Team A · {totalA}</span>
+                      <span>{totalB} · Team B 🔴</span>
+                    </div>
+                  </div>
+
+                  <p className="text-slate-500 text-xs mt-3">
+                    Fairness looks at total power and at how evenly strong and weaker players are spread across the teams.
+                  </p>
+                  {notice && (
+                    <p role="status" className="text-emerald-300 text-sm mt-2">
+                      {notice}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <TeamCard name="Team A" icon="🔵" color="blue" players={result.teamA} captainId={result.captainA} />
+                  <TeamCard name="Team B" icon="🔴" color="rose" players={result.teamB} captainId={result.captainB} />
+                </div>
+
+                <TeamsImage
+                  ref={imageRef}
+                  teamA={sharingOrder(result.teamA, result.captainA)}
+                  teamB={sharingOrder(result.teamB, result.captainB)}
+                  captainA={result.captainA}
+                  captainB={result.captainB}
+                />
+              </section>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
-
