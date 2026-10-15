@@ -168,12 +168,20 @@ export default function AdminConsole() {
             </h1>
             <p className="text-purple-200/60 mt-2 text-lg">Manage your soccer players</p>
           </div>
-          <Link
-            to="/"
-            className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-purple-300 rounded-xl font-semibold transition-all duration-300 border border-purple-500/30 hover:border-purple-400/60"
-          >
-            ⚽ Team Generator
-          </Link>
+          <div className="flex gap-2">
+            <Link
+              to="/positions"
+              className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-purple-300 rounded-xl font-semibold transition-all duration-300 border border-purple-500/30 hover:border-purple-400/60"
+            >
+              📖 شرح المراكز
+            </Link>
+            <Link
+              to="/"
+              className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-purple-300 rounded-xl font-semibold transition-all duration-300 border border-purple-500/30 hover:border-purple-400/60"
+            >
+              ⚽ Team Generator
+            </Link>
+          </div>
         </header>
 
         {/* Toolbar */}
@@ -286,7 +294,17 @@ export default function AdminConsole() {
                   </div>
 
                   <div>
-                    <label htmlFor="position" className="block text-purple-300 text-sm font-medium mb-2">Position</label>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <label htmlFor="position" className="text-purple-300 text-sm font-medium">Position</label>
+                      <a
+                        href="#/positions"
+                        target="_blank"
+                        rel="noopener"
+                        className="text-xs text-slate-400 hover:text-slate-200 underline underline-offset-2"
+                      >
+                        ما معنى المراكز؟
+                      </a>
+                    </div>
                     <select
                       id="position"
                       value={formData.position}
