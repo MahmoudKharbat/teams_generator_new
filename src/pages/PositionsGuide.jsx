@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { POSITIONS, STATS } from '../lib/playerRating';
 import AppFooter from '../components/AppFooter';
+import LogoutButton from '../components/LogoutButton';
 
 // Arabic guide to the player positions and how each one's overall is calculated.
 // The stat weights come from playerRating.js, so this page always matches the real formula.
@@ -175,7 +176,7 @@ export default function PositionsGuide() {
             <h1 className="text-3xl sm:text-4xl font-black text-white">📖 شرح مراكز اللاعبين</h1>
             <p className="text-emerald-200/60 mt-2">ماذا يعني كل مركز، وكيف تُحسب قوة اللاعب فيه</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <Link
               to="/"
               className="px-4 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-emerald-300 rounded-xl font-semibold border border-emerald-500/30"
@@ -188,6 +189,7 @@ export default function PositionsGuide() {
             >
               ⚙️ إدارة اللاعبين
             </Link>
+            <LogoutButton label="تسجيل الخروج" />
           </div>
         </header>
 

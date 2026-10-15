@@ -6,6 +6,7 @@ import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
 import TeamsImage from '../components/TeamsImage';
 import AppFooter from '../components/AppFooter';
+import LogoutButton from '../components/LogoutButton';
 
 const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -157,12 +158,15 @@ export default function TeamGenerator() {
             </h1>
             <p className="text-emerald-200/60 mt-2 text-lg">Pick who's playing, get fair teams</p>
           </div>
-          <Link
-            to="/admin"
-            className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-emerald-300 rounded-xl font-semibold transition-all duration-300 border border-emerald-500/30 hover:border-emerald-400/60"
-          >
-            ⚙️ Admin Console
-          </Link>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Link
+              to="/admin"
+              className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-emerald-300 rounded-xl font-semibold transition-all duration-300 border border-emerald-500/30 hover:border-emerald-400/60"
+            >
+              ⚙️ Admin Console
+            </Link>
+            <LogoutButton />
+          </div>
         </header>
 
         {players.length === 0 ? (

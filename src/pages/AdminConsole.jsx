@@ -18,6 +18,7 @@ import {
 } from '../lib/playerRating';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import AppFooter from '../components/AppFooter';
+import LogoutButton from '../components/LogoutButton';
 import PlayerCard from '../components/PlayerCard';
 import { photoFromFile } from '../lib/photo';
 
@@ -192,7 +193,7 @@ export default function AdminConsole() {
             </h1>
             <p className="text-purple-200/60 mt-2 text-lg">Manage your soccer players</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             <Link
               to="/positions"
               className="px-5 py-2.5 bg-slate-800/80 hover:bg-slate-700 text-purple-300 rounded-xl font-semibold transition-all duration-300 border border-purple-500/30 hover:border-purple-400/60"
@@ -205,6 +206,7 @@ export default function AdminConsole() {
             >
               ⚽ Team Generator
             </Link>
+            <LogoutButton />
           </div>
         </header>
 

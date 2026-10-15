@@ -4,7 +4,7 @@ import { db } from '../firebase';
 import { computeOverall, parseStats, POSITION_BY_CODE } from '../lib/playerRating';
 import { isPhoto } from '../lib/photo';
 
-export const PLAYERS_COLLECTION = 'new_players';
+export const PLAYERS_COLLECTION = 'players';
 
 export const fullName = (player) => `${player.firstname} ${player.lastname}`.trim();
 

@@ -5,9 +5,10 @@ https://mahmoudkharbat.github.io/teams_generator_new/
 
 - **Team generator** (`/`): pick players, then **Balanced** (the fairest split) or **Shuffle** (a random
   split close to the fairest). Share the result as text or as an image without power ratings.
-- **Admin console** (`/#/admin`): add, edit and delete players and their power (0–100).
+- **Admin console** (`/#/admin`): add, edit and delete players: position, six FIFA-style stats (power is
+  calculated from them, see `src/lib/playerRating.js`) and an optional photo.
 
-Players are stored in Firestore (`new_players`). The balancing algorithm is in
+Players are stored in Firestore (`players`). The balancing algorithm is in
 `src/lib/teamBalancer.js`.
 
 ## Development
