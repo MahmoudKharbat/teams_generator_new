@@ -106,6 +106,12 @@ export default function TeamGenerator() {
     // Temporarily bring the off-screen image into the viewport so html2canvas renders it
     const originalStyle = element.parentElement.style.cssText;
     element.parentElement.style.cssText = 'position: fixed; top: 0; left: 0; z-index: -1; opacity: 0;';
+    // html2canvas finds each font's text baseline by measuring an <img> in the live document. Tailwind's
+    // preflight makes images display:block, which skews that measurement and draws all text too low.
+    // This unlayered rule beats preflight for the duration of the capture.
+    const imgFix = document.createElement('style');
+    imgFix.textContent = 'img { display: inline; }';
+    document.head.appendChild(imgFix);
     try {
       const { default: html2canvas } = await import('html2canvas'); // loaded on demand to keep the initial bundle small
       const canvas = await html2canvas(element, { backgroundColor: '#0f172a', scale: 2, useCORS: true, logging: false });
@@ -117,6 +123,7 @@ export default function TeamGenerator() {
       console.error('Error generating screenshot:', err);
       setNotice('Could not create the image');
     } finally {
+      imgFix.remove();
       element.parentElement.style.cssText = originalStyle;
       setDownloading(false);
     }
