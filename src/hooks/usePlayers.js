@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { computeOverall, parseStats, POSITION_BY_CODE } from '../lib/playerRating';
+import { isPhoto } from '../lib/photo';
 
 export const PLAYERS_COLLECTION = 'new_players';
 
@@ -35,6 +36,7 @@ export function usePlayers() {
                 id: doc.id,
                 firstname: String(data.firstname ?? '').trim(),
                 lastname: String(data.lastname ?? '').trim(),
+                photo: isPhoto(data.photo) ? data.photo : null,
                 ...ratePlayer(data),
               };
             })

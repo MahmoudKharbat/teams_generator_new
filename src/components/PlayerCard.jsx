@@ -46,10 +46,14 @@ export default function PlayerCard({ player, className = '' }) {
           </div>
           <div className="flex-1 flex justify-center pr-[4cqw]">
             <div
-              className="w-[44cqw] aspect-square rounded-full flex items-center justify-center text-[16cqw] font-black"
-              style={{ background: tier.avatar }}
+              className="w-[44cqw] aspect-square rounded-full overflow-hidden flex items-center justify-center text-[16cqw] font-black"
+              style={{ background: tier.avatar, boxShadow: player.photo ? `0 0 0 0.8cqw ${tier.line}` : undefined }}
             >
-              {initials(player)}
+              {player.photo ? (
+                <img src={player.photo} alt="" className="w-full h-full object-cover" draggable={false} />
+              ) : (
+                initials(player)
+              )}
             </div>
           </div>
         </div>

@@ -19,10 +19,11 @@ import {
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import AppFooter from '../components/AppFooter';
 import PlayerCard from '../components/PlayerCard';
+import { photoFromFile } from '../lib/photo';
 
 const uniformStats = (value) => Object.fromEntries(STATS.map(({ key }) => [key, clampStat(value)]));
 
-const EMPTY_FORM = { firstname: '', lastname: '', position: DEFAULT_POSITION, stats: uniformStats(60) };
+const EMPTY_FORM = { firstname: '', lastname: '', position: DEFAULT_POSITION, stats: uniformStats(60), photo: null };
 
 const POSITION_GROUPS = [...new Set(POSITIONS.map((p) => p.group))];
 
@@ -41,15 +42,13 @@ const inputClass =
   'w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all';
 
 // Unrated players get all six stats set to their old manual power, so their overall stays the same until edited.
-const formFromPlayer = (player) =>
-  player.rated
-    ? { firstname: player.firstname, lastname: player.lastname, position: player.position, stats: { ...player.stats } }
-    : {
-        firstname: player.firstname,
-        lastname: player.lastname,
-        position: player.position ?? DEFAULT_POSITION,
-        stats: uniformStats(player.power),
-      };
+const formFromPlayer = (player) => ({
+  firstname: player.firstname,
+  lastname: player.lastname,
+  position: player.rated ? player.position : (player.position ?? DEFAULT_POSITION),
+  stats: player.rated ? { ...player.stats } : uniformStats(player.power),
+  photo: player.photo,
+});
 
 export default function AdminConsole() {
   const { players, loading, error } = usePlayers();
@@ -58,6 +57,7 @@ export default function AdminConsole() {
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [formError, setFormError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [processingPhoto, setProcessingPhoto] = useState(false);
   const [query, setQuery] = useState('');
   const [sortBy, setSortBy] = useState('name');
 
@@ -75,6 +75,7 @@ export default function AdminConsole() {
     firstname: formData.firstname.trim() || 'New',
     lastname: formData.lastname.trim() || 'Player',
     position: formData.position,
+    photo: formData.photo,
     stats: previewStats,
     rated: true,
     power: computeOverall(previewStats, formData.position),
@@ -106,6 +107,22 @@ export default function AdminConsole() {
   const setStat = (key, raw) =>
     setFormData((prev) => ({ ...prev, stats: { ...prev.stats, [key]: raw === '' ? '' : clampStat(raw) } }));
 
+  const handlePhotoChosen = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // so choosing the same file again still triggers a change
+    if (!file) return;
+    setProcessingPhoto(true);
+    setFormError(null);
+    try {
+      const photo = await photoFromFile(file);
+      setFormData((prev) => ({ ...prev, photo }));
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setProcessingPhoto(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -123,7 +140,14 @@ export default function AdminConsole() {
     setSaving(true);
     try {
       // power is stored for reference only; the app always recomputes it from position + stats
-      const data = { firstname, lastname, position: preview.position, stats: preview.stats, power: preview.power };
+      const data = {
+        firstname,
+        lastname,
+        position: preview.position,
+        stats: preview.stats,
+        power: preview.power,
+        photo: formData.photo ?? null,
+      };
       if (editingPlayer) {
         await updateDoc(doc(db, PLAYERS_COLLECTION, editingPlayer.id), data);
       } else {
@@ -260,6 +284,31 @@ export default function AdminConsole() {
                 <div className="md:order-last">
                   <div className="md:sticky md:top-0">
                     <PlayerCard player={preview} className="w-44 md:w-full mx-auto" />
+                    <div className="flex justify-center gap-2 mt-3">
+                      <label
+                        className={`px-3 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors ${
+                          processingPhoto ? 'bg-slate-700 text-slate-400' : 'bg-purple-600/30 hover:bg-purple-600/50 text-purple-200'
+                        }`}
+                      >
+                        {processingPhoto ? 'Processing…' : formData.photo ? '📷 Change photo' : '📷 Upload photo'}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoChosen}
+                          disabled={processingPhoto}
+                          className="sr-only"
+                        />
+                      </label>
+                      {formData.photo && (
+                        <button
+                          type="button"
+                          onClick={() => setFormData((prev) => ({ ...prev, photo: null }))}
+                          className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-700/70 hover:bg-slate-600 text-slate-300"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                     <p className="text-slate-400 text-xs text-center mt-3">
                       Overall for {formData.position}: {describeWeights(formData.position)}
                     </p>
@@ -370,7 +419,7 @@ export default function AdminConsole() {
                   <div className="flex gap-3 pt-2">
                     <button
                       type="submit"
-                      disabled={saving}
+                      disabled={saving || processingPhoto}
                       className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 disabled:opacity-60 text-white rounded-xl font-bold transition-all duration-300"
                     >
                       {saving ? 'Saving…' : editingPlayer ? 'Update Player' : 'Add Player'}

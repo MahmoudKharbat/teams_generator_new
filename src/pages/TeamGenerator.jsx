@@ -229,11 +229,11 @@ export default function TeamGenerator() {
                         }`}
                       >
                         <div
-                          className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                          className={`w-10 h-10 shrink-0 rounded-full overflow-hidden flex items-center justify-center text-sm font-bold transition-colors ${
                             selected ? 'bg-emerald-400 text-slate-900' : 'bg-slate-700 text-slate-300'
                           }`}
                         >
-                          {selected ? '✓' : initials(player)}
+                          {selected ? '✓' : player.photo ? <img src={player.photo} alt="" className="w-full h-full object-cover" /> : initials(player)}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline justify-between gap-2">
