@@ -4,18 +4,52 @@ import { db } from '../firebase';
 import { Link } from 'react-router-dom';
 import { fullName, PLAYERS_COLLECTION, usePlayers } from '../hooks/usePlayers';
 import { averagePower } from '../lib/teamBalancer';
+import {
+  clampStat,
+  computeOverall,
+  DEFAULT_POSITION,
+  describeWeights,
+  GK_HINT,
+  POSITION_ORDER,
+  POSITIONS,
+  STAT_MAX,
+  STAT_MIN,
+  STATS,
+} from '../lib/playerRating';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import AppFooter from '../components/AppFooter';
+import PlayerCard from '../components/PlayerCard';
 
-const EMPTY_FORM = { firstname: '', lastname: '', power: '' };
+const uniformStats = (value) => Object.fromEntries(STATS.map(({ key }) => [key, clampStat(value)]));
 
+const EMPTY_FORM = { firstname: '', lastname: '', position: DEFAULT_POSITION, stats: uniformStats(60) };
+
+const POSITION_GROUPS = [...new Set(POSITIONS.map((p) => p.group))];
+
+const byName = (a, b) => fullName(a).localeCompare(fullName(b));
 const SORTS = {
-  name: { label: 'Name', compare: (a, b) => fullName(a).localeCompare(fullName(b)) },
-  power: { label: 'Power', compare: (a, b) => b.power - a.power || fullName(a).localeCompare(fullName(b)) },
+  name: { label: 'Name', compare: byName },
+  power: { label: 'Overall', compare: (a, b) => b.power - a.power || byName(a, b) },
+  position: {
+    label: 'Position',
+    compare: (a, b) =>
+      (POSITION_ORDER[a.position] ?? 99) - (POSITION_ORDER[b.position] ?? 99) || b.power - a.power || byName(a, b),
+  },
 };
 
 const inputClass =
   'w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 transition-all';
+
+// Unrated players get all six stats set to their old manual power, so their overall stays the same until edited.
+const formFromPlayer = (player) =>
+  player.rated
+    ? { firstname: player.firstname, lastname: player.lastname, position: player.position, stats: { ...player.stats } }
+    : {
+        firstname: player.firstname,
+        lastname: player.lastname,
+        position: player.position ?? DEFAULT_POSITION,
+        stats: uniformStats(player.power),
+      };
 
 export default function AdminConsole() {
   const { players, loading, error } = usePlayers();
@@ -33,9 +67,22 @@ export default function AdminConsole() {
     return [...filtered].sort(SORTS[sortBy].compare);
   }, [players, query, sortBy]);
 
+  const unratedCount = players.filter((p) => !p.rated).length;
+
+  const statsComplete = STATS.every(({ key }) => formData.stats[key] !== '');
+  const previewStats = Object.fromEntries(STATS.map(({ key }) => [key, clampStat(formData.stats[key])]));
+  const preview = {
+    firstname: formData.firstname.trim() || 'New',
+    lastname: formData.lastname.trim() || 'Player',
+    position: formData.position,
+    stats: previewStats,
+    rated: true,
+    power: computeOverall(previewStats, formData.position),
+  };
+
   const openForm = (player = null) => {
     setEditingPlayer(player);
-    setFormData(player ? { firstname: player.firstname, lastname: player.lastname, power: String(player.power) } : EMPTY_FORM);
+    setFormData(player ? formFromPlayer(player) : EMPTY_FORM);
     setFormError(null);
     setShowForm(true);
   };
@@ -55,25 +102,28 @@ export default function AdminConsole() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showForm]);
 
+  // Empty is allowed while typing; anything else is kept within 1-99.
+  const setStat = (key, raw) =>
+    setFormData((prev) => ({ ...prev, stats: { ...prev.stats, [key]: raw === '' ? '' : clampStat(raw) } }));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
     const firstname = formData.firstname.trim();
     const lastname = formData.lastname.trim();
-    if (!firstname || !lastname || formData.power === '') {
-      setFormError('Please fill in all fields');
+    if (!firstname || !lastname) {
+      setFormError('Please fill in the first and last name');
       return;
     }
-
-    const power = parseFloat(formData.power);
-    if (isNaN(power) || power < 0 || power > 100) {
-      setFormError('Power must be a number between 0 and 100');
+    if (!statsComplete) {
+      setFormError(`Every stat needs a value from ${STAT_MIN} to ${STAT_MAX}`);
       return;
     }
 
     setSaving(true);
     try {
-      const data = { firstname, lastname, power: Math.round(power * 10) / 10 };
+      // power is stored for reference only; the app always recomputes it from position + stats
+      const data = { firstname, lastname, position: preview.position, stats: preview.stats, power: preview.power };
       if (editingPlayer) {
         await updateDoc(doc(db, PLAYERS_COLLECTION, editingPlayer.id), data);
       } else {
@@ -127,7 +177,7 @@ export default function AdminConsole() {
         </header>
 
         {/* Toolbar */}
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="flex flex-col lg:flex-row gap-3 mb-4">
           <button
             onClick={() => openForm()}
             className="px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 text-white rounded-xl font-bold transition-all duration-300 shadow-xl hover:shadow-purple-500/30 flex items-center justify-center gap-2"
@@ -166,6 +216,21 @@ export default function AdminConsole() {
           )}
         </div>
 
+        {players.length > 0 && (
+          <p className="text-slate-400 text-sm mb-6">
+            <span className="text-purple-300 font-bold">{players.length}</span> players · average overall{' '}
+            <span className="text-purple-300 font-bold">{averagePower(players)}</span>
+            {unratedCount > 0 && (
+              <>
+                {' · '}
+                <span className="text-amber-300">
+                  {unratedCount} not rated yet: edit them to set a position and stats
+                </span>
+              </>
+            )}
+          </p>
+        )}
+
         {/* Player Form Modal */}
         {showForm && (
           <div
@@ -176,151 +241,168 @@ export default function AdminConsole() {
               role="dialog"
               aria-modal="true"
               aria-labelledby="player-form-title"
-              className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 sm:p-8 w-full max-w-md border border-purple-500/30 shadow-2xl"
+              className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-5 sm:p-8 w-full max-w-3xl max-h-[92vh] overflow-y-auto border border-purple-500/30 shadow-2xl"
             >
               <h2 id="player-form-title" className="text-2xl font-bold text-white mb-6">
                 {editingPlayer ? '✏️ Edit Player' : '➕ Add New Player'}
               </h2>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div>
-                  <label htmlFor="firstname" className="block text-purple-300 text-sm font-medium mb-2">First Name</label>
-                  <input
-                    id="firstname"
-                    type="text"
-                    autoFocus
-                    value={formData.firstname}
-                    onChange={(e) => setFormData({ ...formData, firstname: e.target.value })}
-                    className={inputClass}
-                    placeholder="Enter first name"
-                  />
+              <div className="grid md:grid-cols-[1fr_220px] gap-6 md:gap-8">
+                {/* Live preview */}
+                <div className="md:order-last">
+                  <div className="md:sticky md:top-0">
+                    <PlayerCard player={preview} className="w-44 md:w-full mx-auto" />
+                    <p className="text-slate-400 text-xs text-center mt-3">
+                      Overall for {formData.position}: {describeWeights(formData.position)}
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <label htmlFor="lastname" className="block text-purple-300 text-sm font-medium mb-2">Last Name</label>
-                  <input
-                    id="lastname"
-                    type="text"
-                    value={formData.lastname}
-                    onChange={(e) => setFormData({ ...formData, lastname: e.target.value })}
-                    className={inputClass}
-                    placeholder="Enter last name"
-                  />
-                </div>
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="firstname" className="block text-purple-300 text-sm font-medium mb-2">First Name</label>
+                      <input
+                        id="firstname"
+                        type="text"
+                        autoFocus
+                        value={formData.firstname}
+                        onChange={(e) => setFormData({ ...formData, firstname: e.target.value })}
+                        className={inputClass}
+                        placeholder="First name"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="lastname" className="block text-purple-300 text-sm font-medium mb-2">Last Name</label>
+                      <input
+                        id="lastname"
+                        type="text"
+                        value={formData.lastname}
+                        onChange={(e) => setFormData({ ...formData, lastname: e.target.value })}
+                        className={inputClass}
+                        placeholder="Last name"
+                      />
+                    </div>
+                  </div>
 
-                <div>
-                  <label htmlFor="power" className="block text-purple-300 text-sm font-medium mb-2">Power (0-100)</label>
-                  <input
-                    id="power"
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={formData.power}
-                    onChange={(e) => setFormData({ ...formData, power: e.target.value })}
-                    className={inputClass}
-                    placeholder="Enter power rating"
-                  />
-                </div>
+                  <div>
+                    <label htmlFor="position" className="block text-purple-300 text-sm font-medium mb-2">Position</label>
+                    <select
+                      id="position"
+                      value={formData.position}
+                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                      className={inputClass}
+                    >
+                      {POSITION_GROUPS.map((group) => (
+                        <optgroup key={group} label={group}>
+                          {POSITIONS.filter((p) => p.group === group).map((p) => (
+                            <option key={p.code} value={p.code}>
+                              {p.code} · {p.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    {formData.position === 'GK' && <p className="text-slate-400 text-xs mt-2">{GK_HINT}</p>}
+                  </div>
 
-                {formError && (
-                  <p role="alert" className="text-rose-300 text-sm bg-rose-900/30 border border-rose-500/40 rounded-lg px-3 py-2">
-                    {formError}
-                  </p>
-                )}
+                  <fieldset className="space-y-3" aria-labelledby="stats-heading">
+                    <div className="flex items-baseline justify-between mb-3">
+                      <span id="stats-heading" className="text-purple-300 text-sm font-medium">
+                        Stats ({STAT_MIN}-{STAT_MAX})
+                      </span>
+                      <span className="text-slate-400 text-sm">
+                        Overall <span className="text-white text-lg font-black">{preview.power}</span>
+                      </span>
+                    </div>
+                    {STATS.map(({ key, label, name }) => (
+                      <div key={key} className="grid grid-cols-[3rem_1fr_3.75rem] items-center gap-3">
+                        <label htmlFor={`stat-${key}`} className="text-white text-sm font-bold" title={name}>
+                          {label}
+                        </label>
+                        <input
+                          type="range"
+                          min={STAT_MIN}
+                          max={STAT_MAX}
+                          value={formData.stats[key] === '' ? STAT_MIN : formData.stats[key]}
+                          onChange={(e) => setStat(key, e.target.value)}
+                          aria-label={name}
+                          className="w-full accent-purple-500"
+                        />
+                        <input
+                          id={`stat-${key}`}
+                          type="number"
+                          inputMode="numeric"
+                          min={STAT_MIN}
+                          max={STAT_MAX}
+                          value={formData.stats[key]}
+                          onChange={(e) => setStat(key, e.target.value)}
+                          className="w-full px-2 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white text-center focus:outline-none focus:border-purple-500"
+                        />
+                      </div>
+                    ))}
+                  </fieldset>
 
-                <div className="flex gap-3 pt-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 disabled:opacity-60 text-white rounded-xl font-bold transition-all duration-300"
-                  >
-                    {saving ? 'Saving…' : editingPlayer ? 'Update Player' : 'Add Player'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeForm}
-                    className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl font-medium transition-all duration-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
+                  {formError && (
+                    <p role="alert" className="text-rose-300 text-sm bg-rose-900/30 border border-rose-500/40 rounded-lg px-3 py-2">
+                      {formError}
+                    </p>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-fuchsia-500 hover:from-purple-500 hover:to-fuchsia-400 disabled:opacity-60 text-white rounded-xl font-bold transition-all duration-300"
+                    >
+                      {saving ? 'Saving…' : editingPlayer ? 'Update Player' : 'Add Player'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeForm}
+                      className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl font-medium transition-all duration-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Players Table */}
+        {/* Player cards */}
         {players.length === 0 ? (
           <div className="bg-slate-800/40 backdrop-blur-sm rounded-2xl p-12 text-center border border-slate-700/50">
             <div className="text-6xl mb-4">👥</div>
             <h3 className="text-2xl font-bold text-slate-300 mb-2">No Players Yet</h3>
             <p className="text-slate-400">Click "Add New Player" to create your first player</p>
           </div>
+        ) : visiblePlayers.length === 0 ? (
+          <p className="text-slate-400 text-center p-8">No players match “{query}”.</p>
         ) : (
-          <div className="bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-700/50 overflow-hidden">
-            {/* Table Header */}
-            <div className="hidden sm:grid grid-cols-12 gap-4 p-4 bg-slate-800/80 border-b border-slate-700/50 text-purple-300 font-semibold text-sm uppercase tracking-wider">
-              <div className="col-span-3">First Name</div>
-              <div className="col-span-3">Last Name</div>
-              <div className="col-span-3">Power</div>
-              <div className="col-span-3 text-right">Actions</div>
-            </div>
-
-            {/* Table Body */}
-            <div className="divide-y divide-slate-700/50">
-              {visiblePlayers.length === 0 && (
-                <p className="text-slate-400 text-center p-8">No players match “{query}”.</p>
-              )}
-              {visiblePlayers.map((player) => (
-                <div key={player.id} className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-4 p-4 hover:bg-slate-700/20 transition-colors">
-                  <div className="sm:col-span-3 flex items-center gap-3">
-                    <div className="sm:hidden text-xs text-slate-500 uppercase w-20">First Name</div>
-                    <span className="text-white font-medium">{player.firstname}</span>
-                  </div>
-                  <div className="sm:col-span-3 flex items-center gap-3">
-                    <div className="sm:hidden text-xs text-slate-500 uppercase w-20">Last Name</div>
-                    <span className="text-white">{player.lastname}</span>
-                  </div>
-                  <div className="sm:col-span-3 flex items-center gap-3">
-                    <div className="sm:hidden text-xs text-slate-500 uppercase w-20">Power</div>
-                    <div className="flex items-center gap-3 flex-1">
-                      <div className="flex-1 max-w-[120px] h-2 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-400"
-                          style={{ width: `${Math.min(player.power, 100)}%` }}
-                        ></div>
-                      </div>
-                      <span className="text-purple-300 font-bold w-10 text-right">{player.power}</span>
-                    </div>
-                  </div>
-                  <div className="sm:col-span-3 flex items-center justify-start sm:justify-end gap-2 mt-2 sm:mt-0">
-                    <button
-                      onClick={() => openForm(player)}
-                      className="px-4 py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 rounded-lg font-medium transition-all duration-200 flex items-center gap-1"
-                    >
-                      <span>✏️</span> Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(player)}
-                      className="px-4 py-2 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 rounded-lg font-medium transition-all duration-200 flex items-center gap-1"
-                    >
-                      <span>🗑️</span> Delete
-                    </button>
-                  </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-x-4 gap-y-6">
+            {visiblePlayers.map((player) => (
+              <div key={player.id} className="flex flex-col gap-2">
+                <PlayerCard player={player} />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openForm(player)}
+                    className="flex-1 px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 rounded-lg text-sm font-medium transition-all duration-200"
+                  >
+                    ✏️ {player.rated ? 'Edit' : 'Rate'}
+                  </button>
+                  <button
+                    onClick={() => handleDelete(player)}
+                    aria-label={`Delete ${fullName(player)}`}
+                    title="Delete"
+                    className="px-3 py-2 bg-rose-600/30 hover:bg-rose-600/50 text-rose-300 rounded-lg text-sm transition-all duration-200"
+                  >
+                    🗑️
+                  </button>
                 </div>
-              ))}
-            </div>
-
-            {/* Table Footer */}
-            <div className="p-4 bg-slate-800/60 border-t border-slate-700/50">
-              <p className="text-slate-400 text-sm">
-                Total Players: <span className="text-purple-300 font-bold">{players.length}</span>
-                {' • '}
-                Average Power: <span className="text-purple-300 font-bold">{averagePower(players)}</span>
-              </p>
-            </div>
+              </div>
+            ))}
           </div>
         )}
         <AppFooter />

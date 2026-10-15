@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fullName, usePlayers } from '../hooks/usePlayers';
+import { fullName, initials, usePlayers } from '../hooks/usePlayers';
 import { averagePower, generateTeams, MODES, SHUFFLE_TOLERANCE, totalPower } from '../lib/teamBalancer';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
@@ -8,8 +8,6 @@ import TeamsImage from '../components/TeamsImage';
 import AppFooter from '../components/AppFooter';
 
 const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
-
-const initials = (player) => `${player.firstname[0] ?? ''}${player.lastname[0] ?? ''}`.toUpperCase() || '?';
 
 // Captain first, then by name, so shared lists don't reveal the power ranking.
 const sharingOrder = (team, captainId) =>
@@ -239,8 +237,11 @@ export default function TeamGenerator() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-baseline justify-between gap-2">
-                            <span className="font-semibold text-white truncate">{fullName(player)}</span>
-                            <span className="text-emerald-400 font-bold text-sm">{player.power}</span>
+                            <span dir="auto" className="font-semibold text-white truncate">{fullName(player)}</span>
+                            <span className="shrink-0 text-sm">
+                              {player.position && <span className="text-slate-400 font-medium mr-1.5">{player.position}</span>}
+                              <span className="text-emerald-400 font-bold">{player.power}</span>
+                            </span>
                           </div>
                           <div className="mt-1.5 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                             <div

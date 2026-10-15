@@ -56,9 +56,10 @@ export default function TeamCard({ name, icon, color, players, captainId }) {
                 {isCaptain ? '👑' : '⚽'}
               </div>
               <div className="flex-1 min-w-0 font-semibold text-white truncate">
-                {fullName(player)}
+                <bdi>{fullName(player)}</bdi>
                 {isCaptain && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
               </div>
+              {player.position && <span className="text-xs font-semibold text-slate-400">{player.position}</span>}
               <div className={`px-2.5 py-0.5 rounded-lg font-bold text-sm ${c.power}`}>{player.power}</div>
             </li>
           );
