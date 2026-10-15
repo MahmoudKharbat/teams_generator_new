@@ -5,6 +5,7 @@ import { averagePower, generateTeams, MODES, SHUFFLE_TOLERANCE, totalPower } fro
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
 import TeamsImage from '../components/TeamsImage';
+import AppFooter from '../components/AppFooter';
 
 const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
 
@@ -362,6 +363,7 @@ export default function TeamGenerator() {
             )}
           </>
         )}
+        <AppFooter />
       </div>
     </div>
   );

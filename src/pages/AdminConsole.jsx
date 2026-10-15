@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { fullName, PLAYERS_COLLECTION, usePlayers } from '../hooks/usePlayers';
 import { averagePower } from '../lib/teamBalancer';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
+import AppFooter from '../components/AppFooter';
 
 const EMPTY_FORM = { firstname: '', lastname: '', power: '' };
 
@@ -322,6 +323,7 @@ export default function AdminConsole() {
             </div>
           </div>
         )}
+        <AppFooter />
       </div>
     </div>
   );

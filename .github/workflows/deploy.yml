@@ -1,5 +1,9 @@
-# Builds the app and publishes it to the gh-pages branch, which GitHub Pages serves.
-# Same result as running `npm run deploy` locally.
+# Builds the app and publishes it to the gh-pages branch, which GitHub Pages serves, on every push
+# to main (or on demand). Same result as running `npm run deploy` locally, plus versioning.
+#
+# Versioning: scripts/bump-version.mjs picks the next version from the commit messages since the
+# last v* tag (feat: → minor, feat!: / BREAKING CHANGE → major, otherwise patch; docs/chore/ci/style/
+# test/build only → none). After a successful deploy the version is committed back to main and tagged.
 name: Deploy to GitHub Pages
 
 on:
@@ -7,36 +11,66 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-# Never run two deploys at once; a newer push replaces a queued one.
+# One deploy at a time; a newer push waits for the running one instead of cancelling it mid-release.
 concurrency:
   group: deploy-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # publish gh-pages, push the version commit and tag
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # full history and tags, to find the last version
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
-      - run: npm ci
+      - name: Install
+        run: npm ci
 
-      - run: npm run lint
+      - name: Next version
+        id: version
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: node scripts/bump-version.mjs
 
-      - run: npm run build
+      - name: Lint
+        run: npm run lint
 
-      # Commit author is set via git config: gh-pages' -u option can't parse the bot's bracketed email
-      - name: Publish dist to gh-pages
+      - name: Build
+        run: npm run build
+
+      - name: Git identity
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npx gh-pages -d dist -r "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      # Commit author comes from the git config above: gh-pages' -u option can't parse the bot's bracketed email
+      - name: Publish dist to gh-pages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx gh-pages -d dist -r "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+      # Only after a successful deploy, so a failed build never uses up a version number.
+      # GITHUB_TOKEN pushes don't start another workflow run, so this can't loop.
+      - name: Commit and tag the version
+        if: steps.version.outputs.bumped == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git add package.json package-lock.json
+          git commit -m "chore(release): v$VERSION [skip ci]"
+          # Someone may have pushed while this ran; put the version commit on top of their work,
+          # then tag the commit that actually lands on main.
+          git pull --rebase --autostash origin main
+          git tag -a "v$VERSION" -m "v$VERSION"
+          git push origin HEAD:main
+          git push origin "v$VERSION"
+          echo "::notice::Released v$VERSION"
