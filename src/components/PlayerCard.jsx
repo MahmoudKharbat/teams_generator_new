@@ -51,6 +51,10 @@ const PHOTO_FADE = 'linear-gradient(to right, transparent, #000 22%, #000 78%, t
 
 const BAND = 90; // cqw from the top: where the photo ends and the name panel starts
 
+// Name size in cqw: 8 for most names, smaller for long ones so they fit on one line
+// (a capital in the condensed font is about half as wide as the font size).
+const nameSize = (name) => Math.max(5, Math.min(8, 86 / (name.length * 0.5)));
+
 function Silhouette({ color }) {
   return (
     <svg viewBox="0 0 100 100" className="w-full h-full" fill={color} aria-hidden="true">
@@ -109,7 +113,11 @@ export default function PlayerCard({ player, className = '' }) {
 
         {/* Name, stats, footer */}
         <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: `${BAND}cqw` }}>
-          <div dir="auto" className="max-w-[88cqw] mt-[2cqw] text-[10cqw] leading-none font-bold uppercase truncate">
+          <div
+            dir="auto"
+            className="max-w-[88cqw] h-[10cqw] mt-[1.5cqw] flex items-center leading-none font-bold uppercase whitespace-nowrap overflow-hidden"
+            style={{ fontSize: `${nameSize(fullName(player))}cqw` }}
+          >
             {fullName(player)}
           </div>
 
