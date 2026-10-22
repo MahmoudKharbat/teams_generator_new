@@ -1,4 +1,5 @@
 import { fullName } from '../hooks/usePlayers';
+import ClubLogo from './ClubLogo';
 
 // Rendered off-screen and captured by html2canvas for the "Download image" button.
 // Inline styles only: html2canvas can't parse Tailwind v4's oklch() colors. Power is deliberately hidden.
@@ -69,7 +70,10 @@ export default function TeamsImage({ ref, teams }) {
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >
-        <h1 style={{ fontSize: '28px', fontWeight: '900', textAlign: 'center', color: '#34d399', marginBottom: '24px' }}>⚽ Zemer Teams</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+          <ClubLogo alt="" style={{ width: '72px', height: '72px' }} />
+          <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#34d399' }}>Zemer Teams</h1>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teams.length}, 1fr)`, gap: '24px' }}>
           {teams.map((team) => (
             <TeamColumn key={team.title} {...team} />

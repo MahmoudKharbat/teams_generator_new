@@ -1,5 +1,6 @@
 import { fullName } from '../hooks/usePlayers';
 import { cardTier, POSITION_BY_CODE, STATS } from '../lib/playerRating';
+import ClubLogo from './ClubLogo';
 
 // FIFA-style player card. Sizes are in container units (cqw = 1% of the card's width), so the card scales
 // to whatever width it gets. The card is 100cqw wide and 140cqw tall, the same ratio as the shape below.
@@ -84,7 +85,7 @@ export default function PlayerCard({ player, className = '' }) {
 
         {/* Photo */}
         <div
-          className="absolute left-[24cqw] right-[3cqw] top-[8cqw]"
+          className="absolute left-[29cqw] right-[7cqw] top-[15cqw]"
           style={{
             bottom: `calc(100% - ${BAND}cqw)`,
             maskImage: PHOTO_FADE,
@@ -108,7 +109,7 @@ export default function PlayerCard({ player, className = '' }) {
 
         {/* Name, stats, footer */}
         <div className="absolute inset-x-0 flex flex-col items-center" style={{ top: `${BAND}cqw` }}>
-          <div dir="auto" className="max-w-[88cqw] mt-[1cqw] text-[12cqw] leading-none font-bold uppercase truncate">
+          <div dir="auto" className="max-w-[88cqw] mt-[2cqw] text-[10cqw] leading-none font-bold uppercase truncate">
             {fullName(player)}
           </div>
 
@@ -121,18 +122,22 @@ export default function PlayerCard({ player, className = '' }) {
             ))}
           </div>
 
-          {player.rated ? (
-            <div className="mt-[2.5cqw] text-[4.5cqw] font-semibold uppercase tracking-[0.15em] opacity-60">
-              {POSITION_BY_CODE[player.position].name}
-            </div>
-          ) : (
-            <div
-              className="mt-[2cqw] px-[3cqw] py-[0.5cqw] rounded-full text-[4.5cqw] font-semibold uppercase tracking-wide"
-              style={{ background: tier.silhouette }}
-            >
-              Not rated
-            </div>
-          )}
+          {/* Club crest + position, where game cards show the league and club badges */}
+          <div className="mt-[1.5cqw] flex items-center gap-[2cqw]">
+            <ClubLogo alt="" className="w-[9cqw] h-[9cqw]" />
+            {player.rated ? (
+              <span className="text-[4.5cqw] font-semibold uppercase tracking-[0.15em] opacity-60">
+                {POSITION_BY_CODE[player.position].name}
+              </span>
+            ) : (
+              <span
+                className="px-[3cqw] py-[0.5cqw] rounded-full text-[4.5cqw] font-semibold uppercase tracking-wide"
+                style={{ background: tier.silhouette }}
+              >
+                Not rated
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Bevelled rim */}

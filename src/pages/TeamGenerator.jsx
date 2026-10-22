@@ -14,6 +14,7 @@ import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
 import TeamsImage from '../components/TeamsImage';
 import AppFooter from '../components/AppFooter';
+import ClubLogo from '../components/ClubLogo';
 import LogoutButton from '../components/LogoutButton';
 
 const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
@@ -169,14 +170,16 @@ export default function TeamGenerator() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <header className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
-          <div className="text-center sm:text-left">
-            <h1 className="text-4xl sm:text-5xl font-black tracking-tight">
-              <span aria-hidden="true">⚽ </span>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
-                Zemer Teams Generator
-              </span>
-            </h1>
-            <p className="text-emerald-200/60 mt-2 text-lg">Pick who's playing, get fair teams</p>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-5 text-center sm:text-left">
+            <ClubLogo className="w-24 h-24 shrink-0 drop-shadow-lg" />
+            <div>
+              <h1 className="text-4xl sm:text-5xl font-black tracking-tight">
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
+                  Zemer Teams Generator
+                </span>
+              </h1>
+              <p className="text-emerald-200/60 mt-2 text-lg">Pick who's playing, get fair teams</p>
+            </div>
           </div>
           <div className="flex flex-wrap justify-center gap-2">
             <Link

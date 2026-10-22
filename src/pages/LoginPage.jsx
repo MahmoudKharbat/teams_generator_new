@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { checkPassword, startSession } from '../lib/auth';
+import ClubLogo from '../components/ClubLogo';
 
 export default function LoginPage({ onLogin }) {
   const [password, setPassword] = useState('');
@@ -33,7 +34,7 @@ export default function LoginPage({ onLogin }) {
         className="w-full max-w-sm bg-slate-800/60 backdrop-blur-sm border border-slate-700/60 rounded-2xl p-6 sm:p-8 shadow-2xl"
       >
         <div className="text-center mb-6">
-          <div className="text-5xl mb-3">⚽</div>
+          <ClubLogo className="w-28 h-28 mx-auto mb-3 drop-shadow-lg" />
           <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
             Zemer Teams Generator
           </h1>
