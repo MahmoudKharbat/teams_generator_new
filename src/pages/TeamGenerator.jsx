@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fullName, initials, usePlayers } from '../hooks/usePlayers';
-import { averagePower, generateTeams, MODES, SHUFFLE_TOLERANCE, totalPower } from '../lib/teamBalancer';
+import {
+  averagePower,
+  generateTeams,
+  MIN_PLAYERS_FOR_THREE_TEAMS,
+  MODES,
+  SHUFFLE_TOLERANCE,
+  teamSizes,
+  totalPower,
+} from '../lib/teamBalancer';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
 import TeamsImage from '../components/TeamsImage';
@@ -9,6 +17,12 @@ import AppFooter from '../components/AppFooter';
 import LogoutButton from '../components/LogoutButton';
 
 const pickRandom = (list) => list[Math.floor(Math.random() * list.length)];
+
+const TEAMS = [
+  { name: 'Team A', icon: '🔵', color: 'blue', bar: 'bg-blue-500' },
+  { name: 'Team B', icon: '🔴', color: 'rose', bar: 'bg-rose-500' },
+  { name: 'Team C', icon: '🟢', color: 'emerald', bar: 'bg-emerald-500' },
+];
 
 // Captain first, then by name, so shared lists don't reveal the power ranking.
 const sharingOrder = (team, captainId) =>
@@ -31,6 +45,7 @@ function resultDescription({ mode, optionCount }) {
 export default function TeamGenerator() {
   const { players, loading, error } = usePlayers();
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [teamCount, setTeamCount] = useState(2);
   const [query, setQuery] = useState('');
   const [result, setResult] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -40,6 +55,10 @@ export default function TeamGenerator() {
 
   // Deleted players drop out automatically because selection is resolved against the live list.
   const selectedPlayers = useMemo(() => players.filter((p) => selectedIds.has(p.id)), [players, selectedIds]);
+  const count = selectedPlayers.length;
+  const canSplitInThree = count >= MIN_PLAYERS_FOR_THREE_TEAMS;
+  // The choice of 3 teams is kept, but only applies while enough players are selected.
+  const activeTeamCount = canSplitInThree ? teamCount : 2;
 
   const visiblePlayers = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -72,24 +91,22 @@ export default function TeamGenerator() {
   const selectVisible = () => updateSelection((s) => visiblePlayers.forEach((p) => s.add(p.id)));
   const clearSelection = () => updateSelection((s) => s.clear());
 
+  const chooseTeamCount = (n) => {
+    if (n === activeTeamCount) return;
+    setTeamCount(n);
+    setResult(null);
+  };
+
   const generate = (mode) => {
-    if (selectedPlayers.length < 2) return;
-    const teams = generateTeams(selectedPlayers, { mode, avoidKey: result?.key });
-    setResult({
-      ...teams,
-      mode,
-      captainA: pickRandom(teams.teamA).id,
-      captainB: pickRandom(teams.teamB).id,
-    });
+    if (count < 2) return;
+    const split = generateTeams(selectedPlayers, { mode, avoidKey: result?.key, teamCount: activeTeamCount });
+    setResult({ ...split, mode, captains: split.teams.map((team) => pickRandom(team).id) });
   };
 
   const copyAsText = async () => {
     const text = [
       '⚽ Zemer Teams',
-      '',
-      teamText('🔵 Team A', result.teamA, result.captainA),
-      '',
-      teamText('🔴 Team B', result.teamB, result.captainB),
+      ...result.teams.flatMap((team, t) => ['', teamText(`${TEAMS[t].icon} ${TEAMS[t].name}`, team, result.captains[t])]),
     ].join('\n');
     try {
       await navigator.clipboard.writeText(text);
@@ -132,17 +149,20 @@ export default function TeamGenerator() {
   if (loading) return <LoadingScreen />;
   if (error) return <ErrorScreen message={error} />;
 
-  const count = selectedPlayers.length;
+  const sizes = teamSizes(count, activeTeamCount);
+  const smallerTeams = sizes.filter((size) => size === sizes[0]).length;
   const selectionHint =
     count < 2
       ? 'Select at least 2 players'
-      : count % 2
-        ? `${Math.floor(count / 2)} vs ${Math.ceil(count / 2)}: the smaller team gets stronger players`
-        : `${count / 2} vs ${count / 2}`;
+      : sizes.join(' vs ') +
+        (smallerTeams < sizes.length
+          ? smallerTeams > 1
+            ? ': the smaller teams get stronger players'
+            : ': the smaller team gets stronger players'
+          : '');
 
-  const totalA = result ? totalPower(result.teamA) : 0;
-  const totalB = result ? totalPower(result.teamB) : 0;
-  const shareA = result && totalA + totalB > 0 ? (totalA / (totalA + totalB)) * 100 : 50;
+  const totals = result ? result.teams.map(totalPower) : [];
+  const grandTotal = totals.reduce((sum, total) => sum + total, 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900 px-4 py-6 sm:p-8">
@@ -271,6 +291,28 @@ export default function TeamGenerator() {
                   </div>
                   <div className="text-slate-400 text-sm">{selectionHint}</div>
                 </div>
+                <div role="group" aria-label="Number of teams" className="flex shrink-0 p-1 bg-slate-800/80 border border-slate-700 rounded-xl">
+                  {[2, 3].map((n) => {
+                    const disabled = n === 3 && !canSplitInThree;
+                    const active = n === activeTeamCount;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => chooseTeamCount(n)}
+                        disabled={disabled}
+                        aria-pressed={active}
+                        title={disabled ? `Select at least ${MIN_PLAYERS_FOR_THREE_TEAMS} players to split into 3 teams` : undefined}
+                        className={`px-3 py-2 rounded-lg text-sm font-semibold whitespace-nowrap transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed ${
+                          active ? 'bg-emerald-600 text-white shadow' : 'text-slate-300 hover:text-white disabled:hover:text-slate-300'
+                        }`}
+                      >
+                        {n} teams
+                        {disabled && <span className="ml-1 text-xs font-normal">· {MIN_PLAYERS_FOR_THREE_TEAMS}+</span>}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="flex gap-3 w-full sm:w-auto">
                   <button
                     onClick={() => generate(MODES.balanced)}
@@ -299,7 +341,7 @@ export default function TeamGenerator() {
                   <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                     <div className="flex-1">
                       <div className="flex items-baseline gap-3">
-                        <span className="text-slate-300">Power difference</span>
+                        <span className="text-slate-300">{result.teams.length > 2 ? 'Strongest vs weakest' : 'Power difference'}</span>
                         <span className="text-3xl font-black text-amber-400">{result.powerDiff}</span>
                       </div>
                       <p className="text-slate-400 text-sm mt-1">{resultDescription(result)}</p>
@@ -329,16 +371,32 @@ export default function TeamGenerator() {
                     </div>
                   </div>
 
-                  {/* Balance bar: the line in the middle marks a perfect 50/50 */}
+                  {/* Balance bar: the white lines mark a perfectly even split */}
                   <div className="mt-4">
                     <div className="relative flex h-3 rounded-full overflow-hidden bg-slate-700">
-                      <div className="bg-blue-500 transition-all duration-500" style={{ width: `${shareA}%` }}></div>
-                      <div className="bg-rose-500 flex-1"></div>
-                      <div className="absolute left-1/2 top-0 h-full w-0.5 -translate-x-1/2 bg-white/80"></div>
+                      {totals.map((total, t) => (
+                        <div
+                          key={t}
+                          className={`${TEAMS[t].bar} transition-all duration-500`}
+                          style={{ width: `${grandTotal > 0 ? (total / grandTotal) * 100 : 100 / totals.length}%` }}
+                        ></div>
+                      ))}
+                      {totals.slice(1).map((_, t) => (
+                        <div
+                          key={t}
+                          className="absolute top-0 h-full w-0.5 -translate-x-1/2 bg-white/80"
+                          style={{ left: `${((t + 1) / totals.length) * 100}%` }}
+                        ></div>
+                      ))}
                     </div>
                     <div className="flex justify-between text-xs mt-1.5 text-slate-400">
-                      <span>🔵 Team A · {totalA}</span>
-                      <span>{totalB} · Team B 🔴</span>
+                      {totals.map((total, t) => (
+                        <span key={t}>
+                          {t === totals.length - 1
+                            ? `${total} · ${TEAMS[t].name} ${TEAMS[t].icon}`
+                            : `${TEAMS[t].icon} ${TEAMS[t].name} · ${total}`}
+                        </span>
+                      ))}
                     </div>
                   </div>
 
@@ -352,17 +410,27 @@ export default function TeamGenerator() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <TeamCard name="Team A" icon="🔵" color="blue" players={result.teamA} captainId={result.captainA} />
-                  <TeamCard name="Team B" icon="🔴" color="rose" players={result.teamB} captainId={result.captainB} />
+                <div className={`grid grid-cols-1 gap-6 ${result.teams.length > 2 ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+                  {result.teams.map((team, t) => (
+                    <TeamCard
+                      key={TEAMS[t].name}
+                      name={TEAMS[t].name}
+                      icon={TEAMS[t].icon}
+                      color={TEAMS[t].color}
+                      players={team}
+                      captainId={result.captains[t]}
+                    />
+                  ))}
                 </div>
 
                 <TeamsImage
                   ref={imageRef}
-                  teamA={sharingOrder(result.teamA, result.captainA)}
-                  teamB={sharingOrder(result.teamB, result.captainB)}
-                  captainA={result.captainA}
-                  captainB={result.captainB}
+                  teams={result.teams.map((team, t) => ({
+                    title: `${TEAMS[t].icon} ${TEAMS[t].name}`,
+                    color: TEAMS[t].color,
+                    players: sharingOrder(team, result.captains[t]),
+                    captainId: result.captains[t],
+                  }))}
                 />
               </section>
             )}

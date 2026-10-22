@@ -1,10 +1,11 @@
 # Zemer Teams Generator
 
-Splits the players who showed up into two fair teams. Live at
+Splits the players who showed up into two fair teams, or three from 16 players. Live at
 https://mahmoudkharbat.github.io/teams_generator_new/
 
-- **Team generator** (`/`): pick players, then **Balanced** (the fairest split) or **Shuffle** (a random
-  split close to the fairest). Share the result as text or as an image without power ratings.
+- **Team generator** (`/`): pick players, choose 2 or 3 teams (3 needs at least 16 players), then
+  **Balanced** (the fairest split) or **Shuffle** (a random split close to the fairest). Share the result
+  as text or as an image without power ratings.
 - **Admin console** (`/#/admin`): add, edit and delete players: position, six FIFA-style stats (power is
   calculated from them, see `src/lib/playerRating.js`) and an optional photo.
 

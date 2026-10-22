@@ -18,6 +18,14 @@ const COLORS = {
     avatar: 'bg-rose-600/50',
     power: 'bg-rose-600/30 text-rose-200',
   },
+  emerald: {
+    card: 'from-emerald-900/40 to-emerald-800/10 border-emerald-500/30',
+    title: 'text-emerald-300',
+    stat: 'bg-emerald-500/20 text-emerald-200',
+    row: 'bg-emerald-950/40',
+    avatar: 'bg-emerald-600/50',
+    power: 'bg-emerald-600/30 text-emerald-200',
+  },
 };
 
 export default function TeamCard({ name, icon, color, players, captainId }) {

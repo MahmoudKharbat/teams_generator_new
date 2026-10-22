@@ -6,6 +6,7 @@ import { fullName } from '../hooks/usePlayers';
 const TEAM_STYLES = {
   blue: { card: 'rgba(30, 58, 138, 0.6)', border: 'rgba(59, 130, 246, 0.5)', title: '#93c5fd', row: 'rgba(23, 37, 84, 0.6)', avatar: 'rgba(37, 99, 235, 0.6)' },
   rose: { card: 'rgba(136, 19, 55, 0.6)', border: 'rgba(244, 63, 94, 0.5)', title: '#fda4af', row: 'rgba(76, 5, 25, 0.6)', avatar: 'rgba(225, 29, 72, 0.6)' },
+  emerald: { card: 'rgba(6, 78, 59, 0.6)', border: 'rgba(16, 185, 129, 0.5)', title: '#6ee7b7', row: 'rgba(2, 44, 34, 0.6)', avatar: 'rgba(5, 150, 105, 0.6)' },
 };
 
 function TeamColumn({ title, color, players, captainId }) {
@@ -55,17 +56,24 @@ function TeamColumn({ title, color, players, captainId }) {
   );
 }
 
-export default function TeamsImage({ ref, teamA, teamB, captainA, captainB }) {
+// `teams`: [{ title, color, players, captainId }]
+export default function TeamsImage({ ref, teams }) {
   return (
     <div style={{ position: 'absolute', left: '-9999px', top: '0' }}>
       <div
         ref={ref}
-        style={{ padding: '32px', backgroundColor: '#0f172a', width: '800px', fontFamily: 'system-ui, -apple-system, sans-serif' }}
+        style={{
+          padding: '32px',
+          backgroundColor: '#0f172a',
+          width: teams.length > 2 ? '1100px' : '800px',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}
       >
         <h1 style={{ fontSize: '28px', fontWeight: '900', textAlign: 'center', color: '#34d399', marginBottom: '24px' }}>⚽ Zemer Teams</h1>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-          <TeamColumn title="🔵 Team A" color="blue" players={teamA} captainId={captainA} />
-          <TeamColumn title="🔴 Team B" color="rose" players={teamB} captainId={captainB} />
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teams.length}, 1fr)`, gap: '24px' }}>
+          {teams.map((team) => (
+            <TeamColumn key={team.title} {...team} />
+          ))}
         </div>
       </div>
     </div>
