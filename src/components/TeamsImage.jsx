@@ -16,7 +16,7 @@ function TeamColumn({ title, color, players, captainId }) {
     <div style={{ backgroundColor: s.card, borderRadius: '16px', padding: '20px', border: `1px solid ${s.border}` }}>
       <h2 style={{ fontSize: '20px', fontWeight: '900', color: s.title, marginBottom: '16px', textAlign: 'center' }}>{title}</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {players.map((player) => {
+        {players.map((player, index) => {
           const isCaptain = player.id === captainId;
           return (
             <div
@@ -39,20 +39,49 @@ function TeamColumn({ title, color, players, captainId }) {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  fontSize: '14px',
+                  flexShrink: 0,
+                  fontSize: '15px',
+                  fontWeight: '900',
+                  color: 'white',
                   backgroundColor: isCaptain ? 'rgba(234, 179, 8, 0.6)' : s.avatar,
                 }}
               >
-                {isCaptain ? '👑' : '⚽'}
+                {index + 1}
               </div>
               <span style={{ fontWeight: '600', color: 'white', fontSize: '14px' }}>
                 {fullName(player)}
-                {isCaptain && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>(C)</span>}
+                {isCaptain && <span style={{ marginLeft: '4px', color: '#facc15', fontSize: '12px' }}>👑 (C)</span>}
               </span>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Goalkeeper / substitute rotation, by the player numbers shown above. Same for every team, whatever its size.
+function RotationNote() {
+  return (
+    <div
+      dir="rtl"
+      lang="ar"
+      style={{
+        marginTop: '24px',
+        padding: '16px 20px',
+        borderRadius: '12px',
+        backgroundColor: 'rgba(30, 41, 59, 0.8)',
+        border: '1px solid rgba(52, 211, 153, 0.4)',
+        color: '#e2e8f0',
+        fontSize: '18px',
+        lineHeight: '1.8',
+        textAlign: 'right',
+        fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif",
+      }}
+    >
+      <div style={{ fontWeight: '900', color: '#34d399', marginBottom: '4px' }}>ملاحظة</div>
+      <div>اللاعب رقم 2 يبدأ حارسًا للمرمى، واللاعب رقم 5 يجلس خارجًا للتبديل.</div>
+      <div>كل 6 دقائق نقوم بالتبديل: اللاعب رقم 3 يصبح حارس المرمى، واللاعب رقم 6 يخرج، وهكذا.</div>
     </div>
   );
 }
@@ -79,6 +108,7 @@ export default function TeamsImage({ ref, teams }) {
             <TeamColumn key={team.title} {...team} />
           ))}
         </div>
+        <RotationNote />
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ export default function TeamCard({ name, icon, color, players, captainId }) {
       </div>
       <p className="text-slate-400 text-sm mb-3">{players.length} players</p>
       <ul className="space-y-2">
-        {players.map((player) => {
+        {players.map((player, index) => {
           const isCaptain = player.id === captainId;
           return (
             <li
@@ -57,15 +57,15 @@ export default function TeamCard({ name, icon, color, players, captainId }) {
               }`}
             >
               <div
-                className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${
+                className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center font-black text-white ${
                   isCaptain ? 'bg-yellow-500/50' : c.avatar
                 }`}
               >
-                {isCaptain ? '👑' : '⚽'}
+                {index + 1}
               </div>
               <div className="flex-1 min-w-0 font-semibold text-white truncate">
                 <bdi>{fullName(player)}</bdi>
-                {isCaptain && <span className="ml-2 text-yellow-400 text-sm">(C)</span>}
+                {isCaptain && <span className="ml-2 text-yellow-400 text-sm">👑 (C)</span>}
               </div>
               {player.position && <span className="text-xs font-semibold text-slate-400">{player.position}</span>}
               <div className={`px-2.5 py-0.5 rounded-lg font-bold text-sm ${c.power}`}>{player.power}</div>
