@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fullName, initials, usePlayers } from '../hooks/usePlayers';
+import { forgetSavedTeams, resolveSavedTeams, sameTeams, saveTeams, useSavedTeams } from '../hooks/useSavedTeams';
 import {
   averagePower,
+  describeSplit,
   generateTeams,
   MIN_PLAYERS_FOR_THREE_TEAMS,
   MODES,
@@ -12,6 +14,7 @@ import {
 } from '../lib/teamBalancer';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
+import ReplacePlayerDialog from '../components/ReplacePlayerDialog';
 import TeamsImage from '../components/TeamsImage';
 import AppFooter from '../components/AppFooter';
 import ClubLogo from '../components/ClubLogo';
@@ -32,7 +35,18 @@ const sharingOrder = (team, captainId) =>
 const teamText = (title, team, captainId) =>
   [title, ...sharingOrder(team, captainId).map((p, i) => `${i + 1}. ${fullName(p)}${p.id === captainId ? ' (C)' : ''}`)].join('\n');
 
-function resultDescription({ mode, optionCount }) {
+const formatSavedAt = (ms) =>
+  ms ? new Date(ms).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'earlier';
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+function resultDescription({ origin, mode, optionCount, savedAt, missing }) {
+  if (origin === 'edited') return 'Changed by hand. Save to keep these teams for next time.';
+  if (origin === 'saved') {
+    return `Saved teams from ${formatSavedAt(savedAt)}.${
+      missing ? ` ${plural(missing, 'saved player')} ${missing === 1 ? 'was' : 'were'} deleted since.` : ''
+    }`;
+  }
   if (mode === MODES.balanced) {
     return optionCount > 1
       ? `The fairest possible split, picked from ${optionCount} equally fair options.`
@@ -51,6 +65,9 @@ export default function TeamGenerator() {
   const [result, setResult] = useState(null);
   const [notice, setNotice] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [replacing, setReplacing] = useState(null); // { player, team }
+  const savedTeams = useSavedTeams();
   const imageRef = useRef(null);
   const resultsRef = useRef(null);
 
@@ -66,9 +83,21 @@ export default function TeamGenerator() {
     return q ? players.filter((p) => fullName(p).toLowerCase().includes(q)) : players;
   }, [players, query]);
 
+  // The saved split as it would load now, against the live player list.
+  const savedPreview = useMemo(() => (savedTeams ? resolveSavedTeams(savedTeams, players) : null), [savedTeams, players]);
+  const isSaved = Boolean(savedTeams && result && sameTeams(savedTeams, result));
+
+  // Players who aren't in any team: the candidates when replacing someone.
+  const bench = useMemo(() => {
+    if (!result) return [];
+    const inTeams = new Set(result.teams.flatMap((team) => team.map((p) => p.id)));
+    return players.filter((p) => !inTeams.has(p.id));
+  }, [players, result]);
+
   useEffect(() => {
     const el = resultsRef.current;
-    if (!result || !el) return;
+    // Editing happens inside the results, so don't jump to their top.
+    if (!result || result.origin === 'edited' || !el) return;
     const { top } = el.getBoundingClientRect();
     if (top < 0 || top > window.innerHeight * 0.6) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [result]);
@@ -101,8 +130,57 @@ export default function TeamGenerator() {
   const generate = (mode) => {
     if (count < 2) return;
     const split = generateTeams(selectedPlayers, { mode, avoidKey: result?.key, teamCount: activeTeamCount });
-    setResult({ ...split, mode, captains: split.teams.map((team) => pickRandom(team).id) });
+    setResult({ ...split, mode, origin: 'generated', captains: split.teams.map((team) => pickRandom(team).id) });
   };
+
+  const loadSaved = () => {
+    const loaded = savedPreview?.result;
+    if (!loaded) return;
+    setSelectedIds(new Set(loaded.teams.flatMap((team) => team.map((p) => p.id))));
+    setTeamCount(loaded.teams.length);
+    setResult({ ...loaded, missing: savedPreview.missing });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveTeams(result);
+      setNotice('Teams saved for next time');
+    } catch (err) {
+      console.error('Could not save teams:', err);
+      setNotice('Could not save the teams');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const forgetSaved = async () => {
+    if (!confirm('Forget the saved teams?')) return;
+    try {
+      await forgetSavedTeams();
+    } catch (err) {
+      console.error('Could not forget saved teams:', err);
+      setNotice('Could not forget the saved teams');
+    }
+  };
+
+  // Swaps a player for someone on the bench, keeping everyone else (and the captaincy) where they are.
+  const replacePlayer = (outgoing, incoming) => {
+    setResult((prev) => {
+      const teams = prev.teams.map((team) => team.map((p) => (p.id === outgoing.id ? incoming : p)));
+      const captains = prev.captains.map((id) => (id === outgoing.id ? incoming.id : id));
+      return { ...prev, ...describeSplit(teams), captains, origin: 'edited', optionCount: null, missing: 0 };
+    });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(outgoing.id);
+      next.add(incoming.id);
+      return next;
+    });
+    setReplacing(null);
+  };
+
+  const closeReplace = useCallback(() => setReplacing(null), []);
 
   const copyAsText = async () => {
     const text = [
@@ -206,6 +284,42 @@ export default function TeamGenerator() {
           </div>
         ) : (
           <>
+            {/* Saved teams from last time */}
+            {savedTeams && !isSaved && (
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 bg-amber-500/10 border border-amber-400/40 rounded-2xl p-4">
+                <div className="flex-1 min-w-0">
+                  <div className="text-amber-200 font-semibold">📌 Saved teams · {formatSavedAt(savedTeams.savedAt)}</div>
+                  <div className="text-slate-400 text-sm">
+                    {savedPreview?.result
+                      ? `${savedPreview.result.teams.map((team) => team.length).join(' vs ')} · use the same teams and replace anyone who can't make it`
+                      : 'A saved team no longer has any players'}
+                    {savedPreview?.missing > 0 && ` · ${plural(savedPreview.missing, 'player')} deleted since`}
+                  </div>
+                  {notice && !result && (
+                    <p role="status" className="text-emerald-300 text-sm mt-1">
+                      {notice}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {savedPreview?.result && (
+                    <button
+                      onClick={loadSaved}
+                      className="flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded-xl transition-all duration-200"
+                    >
+                      Use saved teams
+                    </button>
+                  )}
+                  <button
+                    onClick={forgetSaved}
+                    className="flex-1 sm:flex-none whitespace-nowrap px-4 py-2.5 bg-slate-800/70 hover:bg-slate-700 text-slate-300 rounded-xl font-semibold transition-all duration-200"
+                  >
+                    Forget
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Player selection */}
             <section className="mb-6">
               <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -349,11 +463,17 @@ export default function TeamGenerator() {
                       </div>
                       <p className="text-slate-400 text-sm mt-1">{resultDescription(result)}</p>
                     </div>
-                    <div className="grid grid-cols-3 gap-2 text-sm sm:flex sm:text-base">
+                    <div className="grid grid-cols-2 gap-2 text-sm sm:flex sm:text-base">
                       <button
-                        onClick={() => generate(result.mode)}
-                        disabled={result.optionCount <= 1}
-                        title={result.optionCount <= 1 ? 'There is no other option this fair' : 'Show a different option'}
+                        onClick={() => generate(result.mode ?? MODES.balanced)}
+                        disabled={result.optionCount != null && result.optionCount <= 1}
+                        title={
+                          result.optionCount == null
+                            ? 'Generate new teams from these players'
+                            : result.optionCount <= 1
+                              ? 'There is no other option this fair'
+                              : 'Show a different option'
+                        }
                         className="px-3 sm:px-4 py-2.5 bg-slate-700/70 hover:bg-slate-600 disabled:opacity-40 disabled:hover:bg-slate-700/70 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-all duration-200"
                       >
                         ↻ Try another
@@ -363,6 +483,14 @@ export default function TeamGenerator() {
                         className="px-3 sm:px-4 py-2.5 bg-slate-700/70 hover:bg-slate-600 text-white rounded-xl font-semibold transition-all duration-200"
                       >
                         📋 Copy text
+                      </button>
+                      <button
+                        onClick={save}
+                        disabled={saving || isSaved}
+                        title={isSaved ? 'These are the saved teams' : 'Keep these teams for next time'}
+                        className="px-3 sm:px-4 py-2.5 bg-amber-500/90 hover:bg-amber-400 disabled:bg-slate-700/70 disabled:text-amber-300 disabled:cursor-default text-slate-900 rounded-xl font-semibold transition-all duration-200"
+                      >
+                        {saving ? 'Saving…' : isSaved ? '✓ Saved' : '💾 Save teams'}
                       </button>
                       <button
                         onClick={downloadImage}
@@ -422,9 +550,20 @@ export default function TeamGenerator() {
                       color={TEAMS[t].color}
                       players={team}
                       captainId={result.captains[t]}
+                      onReplace={(player) => setReplacing({ player, team: t })}
                     />
                   ))}
                 </div>
+
+                {replacing && (
+                  <ReplacePlayerDialog
+                    player={replacing.player}
+                    teamName={`${TEAMS[replacing.team].icon} ${TEAMS[replacing.team].name}`}
+                    bench={bench}
+                    onPick={(incoming) => replacePlayer(replacing.player, incoming)}
+                    onClose={closeReplace}
+                  />
+                )}
 
                 <TeamsImage
                   ref={imageRef}

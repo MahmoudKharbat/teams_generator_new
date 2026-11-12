@@ -222,14 +222,19 @@ export function generateTeams(players, { mode = MODES.balanced, avoidKey = null,
   if (avoidKey && options.length > 1) options = options.filter((o) => o.key !== avoidKey);
 
   const choice = options[Math.floor(Math.random() * options.length)];
-  const byPower = (a, b) => b.power - a.power;
-  const teams = shuffle(choice.teams.map((team) => [...team].sort(byPower)));
-  const totals = teams.map(totalPower);
+  return { ...describeSplit(shuffle(choice.teams)), optionCount };
+}
 
+/**
+ * Sorts each team strongest first and adds the split's `key` and `powerDiff`, keeping the order of the
+ * teams. Used for generated splits and for saved or hand-edited ones.
+ */
+export function describeSplit(teams) {
+  const sorted = teams.map((team) => [...team].sort((a, b) => b.power - a.power));
+  const totals = sorted.map(totalPower);
   return {
-    teams,
-    key: choice.key,
-    optionCount,
+    teams: sorted,
+    key: splitKey(sorted),
     powerDiff: roundPower(Math.max(...totals) - Math.min(...totals)),
   };
 }

@@ -28,7 +28,7 @@ const COLORS = {
   },
 };
 
-export default function TeamCard({ name, icon, color, players, captainId }) {
+export default function TeamCard({ name, icon, color, players, captainId, onReplace }) {
   const c = COLORS[color];
   return (
     <div className={`bg-gradient-to-br ${c.card} rounded-2xl p-4 sm:p-6 border`}>
@@ -69,6 +69,17 @@ export default function TeamCard({ name, icon, color, players, captainId }) {
               </div>
               {player.position && <span className="text-xs font-semibold text-slate-400">{player.position}</span>}
               <div className={`px-2.5 py-0.5 rounded-lg font-bold text-sm ${c.power}`}>{player.power}</div>
+              {onReplace && (
+                <button
+                  type="button"
+                  onClick={() => onReplace(player)}
+                  aria-label={`Replace ${fullName(player)}`}
+                  title="Replace with another player"
+                  className="shrink-0 w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                >
+                  ⇄
+                </button>
+              )}
             </li>
           );
         })}
