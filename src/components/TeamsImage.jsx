@@ -134,31 +134,9 @@ export default function TeamsImage({ ref, teams }) {
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
           <ClubLogo alt="" style={{ width: '72px', height: '72px' }} />
           <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#34d399' }}>Zemer Teams</h1>
-          {borrowing && (
-            <div
-              dir="rtl"
-              lang="ar"
-              style={{
-                position: 'absolute',
-                right: '0',
-                top: '0',
-                bottom: '0',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#fcd34d',
-                fontSize: '22px',
-                fontWeight: '900',
-                fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif",
-              }}
-            >
-              <span>⭐</span>
-              <span>لاعب اختياري</span>
-            </div>
-          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teams.length}, 1fr)`, gap: '24px' }}>
           {teams.map((team) => (
