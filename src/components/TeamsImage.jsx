@@ -10,7 +10,7 @@ const TEAM_STYLES = {
   emerald: { card: 'rgba(6, 78, 59, 0.6)', border: 'rgba(16, 185, 129, 0.5)', title: '#6ee7b7', row: 'rgba(2, 44, 34, 0.6)', avatar: 'rgba(5, 150, 105, 0.6)' },
 };
 
-function TeamColumn({ title, color, players, captainId }) {
+function TeamColumn({ title, color, players, captainId, borrowed = 0 }) {
   const s = TEAM_STYLES[color];
   return (
     <div style={{ backgroundColor: s.card, borderRadius: '16px', padding: '20px', border: `1px solid ${s.border}` }}>
@@ -55,13 +55,46 @@ function TeamColumn({ title, color, players, captainId }) {
             </div>
           );
         })}
+        {Array.from({ length: borrowed }, (_, i) => (
+          <div
+            key={`borrowed-${i}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              borderRadius: '8px',
+              padding: '8px',
+              backgroundColor: s.row,
+              border: '1px dashed rgba(251, 191, 36, 0.5)',
+            }}
+          >
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                fontSize: '15px',
+                fontWeight: '900',
+                color: 'white',
+                backgroundColor: s.avatar,
+              }}
+            >
+              {players.length + i + 1}
+            </div>
+            <span style={{ fontSize: '20px', lineHeight: '1' }}>⭐</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
 // Goalkeeper / substitute rotation, by the player numbers shown above. Same for every team, whatever its size.
-function RotationNote() {
+function RotationNote({ borrowing }) {
   return (
     <div
       dir="rtl"
@@ -82,12 +115,14 @@ function RotationNote() {
       <div style={{ fontWeight: '900', color: '#34d399', marginBottom: '4px' }}>ملاحظة</div>
       <div>اللاعب رقم 2 يبدأ حارسًا للمرمى، واللاعب رقم 5 يجلس خارجًا للتبديل.</div>
       <div>كل 6 دقائق نقوم بالتبديل: اللاعب رقم 3 يصبح حارس المرمى، واللاعب رقم 6 يخرج، وهكذا.</div>
+      {borrowing && <div>⭐ لاعب اختياري: الفريق الذي ينقصه لاعب يأخذ لاعبًا من الفريق الذي ينتظر خارج الملعب.</div>}
     </div>
   );
 }
 
-// `teams`: [{ title, color, players, captainId }]
+// `teams`: [{ title, color, players, captainId, borrowed }]
 export default function TeamsImage({ ref, teams }) {
+  const borrowing = teams.some((team) => team.borrowed > 0);
   return (
     <div style={{ position: 'absolute', left: '-9999px', top: '0' }}>
       <div
@@ -99,16 +134,38 @@ export default function TeamsImage({ ref, teams }) {
           fontFamily: 'system-ui, -apple-system, sans-serif',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', marginBottom: '24px' }}>
           <ClubLogo alt="" style={{ width: '72px', height: '72px' }} />
           <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#34d399' }}>Zemer Teams</h1>
+          {borrowing && (
+            <div
+              dir="rtl"
+              lang="ar"
+              style={{
+                position: 'absolute',
+                right: '0',
+                top: '0',
+                bottom: '0',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                color: '#fcd34d',
+                fontSize: '22px',
+                fontWeight: '900',
+                fontFamily: "'Cairo', 'Segoe UI', Tahoma, sans-serif",
+              }}
+            >
+              <span>⭐</span>
+              <span>لاعب اختياري</span>
+            </div>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${teams.length}, 1fr)`, gap: '24px' }}>
           {teams.map((team) => (
             <TeamColumn key={team.title} {...team} />
           ))}
         </div>
-        <RotationNote />
+        <RotationNote borrowing={borrowing} />
       </div>
     </div>
   );

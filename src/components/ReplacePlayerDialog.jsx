@@ -7,10 +7,10 @@ const formatDiff = (diff) => {
 };
 
 /**
- * Lists the players who aren't in any team, closest in power to `player` first, so a player who can't
- * make it can be swapped out without regenerating the teams.
+ * Lists the players who aren't in any team, closest in power to `targetPower` first. With a `player` it
+ * swaps out someone who can't make it; without one it fills a team's borrowed ⭐ slot.
  */
-export default function ReplacePlayerDialog({ player, teamName, bench, onPick, onClose }) {
+export default function ReplacePlayerDialog({ player, targetPower, teamName, bench, onPick, onClose }) {
   const [query, setQuery] = useState('');
 
   useEffect(() => {
@@ -23,8 +23,8 @@ export default function ReplacePlayerDialog({ player, teamName, bench, onPick, o
     const q = query.trim().toLowerCase();
     return bench
       .filter((p) => !q || fullName(p).toLowerCase().includes(q))
-      .sort((a, b) => Math.abs(a.power - player.power) - Math.abs(b.power - player.power) || fullName(a).localeCompare(fullName(b)));
-  }, [bench, query, player]);
+      .sort((a, b) => Math.abs(a.power - targetPower) - Math.abs(b.power - targetPower) || fullName(a).localeCompare(fullName(b)));
+  }, [bench, query, targetPower]);
 
   return (
     <div
@@ -40,10 +40,16 @@ export default function ReplacePlayerDialog({ player, teamName, bench, onPick, o
         <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-700/60">
           <div className="min-w-0">
             <h2 id="replace-title" className="text-lg font-bold text-white truncate">
-              Replace <bdi>{fullName(player)}</bdi>
+              {player ? (
+                <>
+                  Replace <bdi>{fullName(player)}</bdi>
+                </>
+              ) : (
+                `Fill the ⭐ slot in ${teamName}`
+              )}
             </h2>
             <p className="text-slate-400 text-sm">
-              {teamName} · power {player.power} · closest in power first
+              {player ? `${teamName} · power ${player.power}` : `Average power ${targetPower}`} · closest in power first
             </p>
           </div>
           <button
@@ -88,7 +94,7 @@ export default function ReplacePlayerDialog({ player, teamName, bench, onPick, o
                     </span>
                     {p.position && <span className="text-xs font-semibold text-slate-400">{p.position}</span>}
                     <span className="text-emerald-400 font-bold text-sm">{p.power}</span>
-                    <span className="w-10 text-right text-xs text-slate-500">{formatDiff(p.power - player.power)}</span>
+                    <span className="w-10 text-right text-xs text-slate-500">{formatDiff(p.power - targetPower)}</span>
                   </button>
                 </li>
               ))}

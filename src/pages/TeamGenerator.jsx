@@ -10,7 +10,6 @@ import {
   MODES,
   SHUFFLE_TOLERANCE,
   teamSizes,
-  totalPower,
 } from '../lib/teamBalancer';
 import { ErrorScreen, LoadingScreen } from '../components/StatusScreens';
 import TeamCard from '../components/TeamCard';
@@ -32,8 +31,14 @@ const TEAMS = [
 const sharingOrder = (team, captainId) =>
   [...team].sort((a, b) => (b.id === captainId) - (a.id === captainId) || fullName(a).localeCompare(fullName(b)));
 
-const teamText = (title, team, captainId) =>
-  [title, ...sharingOrder(team, captainId).map((p, i) => `${i + 1}. ${fullName(p)}${p.id === captainId ? ' (C)' : ''}`)].join('\n');
+const BORROWED_LABEL = '⭐ لاعب اختياري';
+
+const teamText = (title, team, captainId, borrowed) =>
+  [
+    title,
+    ...sharingOrder(team, captainId).map((p, i) => `${i + 1}. ${fullName(p)}${p.id === captainId ? ' (C)' : ''}`),
+    ...Array.from({ length: borrowed }, (_, i) => `${team.length + i + 1}. ${BORROWED_LABEL}`),
+  ].join('\n');
 
 const formatSavedAt = (ms) =>
   ms ? new Date(ms).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : 'earlier';
@@ -66,7 +71,7 @@ export default function TeamGenerator() {
   const [notice, setNotice] = useState(null);
   const [downloading, setDownloading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [replacing, setReplacing] = useState(null); // { player, team }
+  const [replacing, setReplacing] = useState(null); // { player, team }; player is null when filling a ⭐ slot
   const savedTeams = useSavedTeams();
   const imageRef = useRef(null);
   const resultsRef = useRef(null);
@@ -165,15 +170,18 @@ export default function TeamGenerator() {
   };
 
   // Swaps a player for someone on the bench, keeping everyone else (and the captaincy) where they are.
-  const replacePlayer = (outgoing, incoming) => {
+  // Without an `outgoing` player, `incoming` fills a borrowed ⭐ slot in team `teamIndex`.
+  const replacePlayer = (outgoing, incoming, teamIndex) => {
     setResult((prev) => {
-      const teams = prev.teams.map((team) => team.map((p) => (p.id === outgoing.id ? incoming : p)));
-      const captains = prev.captains.map((id) => (id === outgoing.id ? incoming.id : id));
+      const teams = prev.teams.map((team, t) =>
+        outgoing ? team.map((p) => (p.id === outgoing.id ? incoming : p)) : t === teamIndex ? [...team, incoming] : team
+      );
+      const captains = prev.captains.map((id) => (outgoing && id === outgoing.id ? incoming.id : id));
       return { ...prev, ...describeSplit(teams), captains, origin: 'edited', optionCount: null, missing: 0 };
     });
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.delete(outgoing.id);
+      if (outgoing) next.delete(outgoing.id);
       next.add(incoming.id);
       return next;
     });
@@ -185,7 +193,11 @@ export default function TeamGenerator() {
   const copyAsText = async () => {
     const text = [
       '⚽ Zemer Teams',
-      ...result.teams.flatMap((team, t) => ['', teamText(`${TEAMS[t].icon} ${TEAMS[t].name}`, team, result.captains[t])]),
+      ...result.teams.flatMap((team, t) => [
+        '',
+        teamText(`${TEAMS[t].icon} ${TEAMS[t].name}`, team, result.captains[t], result.borrowed[t]),
+      ]),
+      ...(result.borrowed.some(Boolean) ? ['', `${BORROWED_LABEL}: يُؤخذ من الفريق الذي ينتظر خارج الملعب`] : []),
     ].join('\n');
     try {
       await navigator.clipboard.writeText(text);
@@ -235,12 +247,16 @@ export default function TeamGenerator() {
       ? 'Select at least 2 players'
       : sizes.join(' vs ') +
         (smallerTeams < sizes.length
-          ? smallerTeams > 1
-            ? ': the smaller teams get stronger players'
+          ? activeTeamCount > 2
+            ? smallerTeams > 1
+              ? ': the short teams borrow a ⭐ player from the team sitting out'
+              : ': the short team borrows a ⭐ player from the team sitting out'
             : ': the smaller team gets stronger players'
           : '');
 
-  const totals = result ? result.teams.map(totalPower) : [];
+  // Includes borrowed ⭐ players at average power.
+  const totals = result ? result.totals : [];
+  const averageInTeams = result ? averagePower(result.teams.flat()) : 0;
   const grandTotal = totals.reduce((sum, total) => sum + total, 0);
 
   return (
@@ -533,6 +549,7 @@ export default function TeamGenerator() {
 
                   <p className="text-slate-500 text-xs mt-3">
                     Fairness looks at total power and at how evenly strong and weaker players are spread across the teams.
+                    {result.borrowed.some(Boolean) && ' A borrowed ⭐ player counts as an average player.'}
                   </p>
                   {notice && (
                     <p role="status" className="text-emerald-300 text-sm mt-2">
@@ -550,7 +567,9 @@ export default function TeamGenerator() {
                       color={TEAMS[t].color}
                       players={team}
                       captainId={result.captains[t]}
+                      borrowed={result.borrowed[t]}
                       onReplace={(player) => setReplacing({ player, team: t })}
+                      onFill={() => setReplacing({ player: null, team: t })}
                     />
                   ))}
                 </div>
@@ -558,9 +577,10 @@ export default function TeamGenerator() {
                 {replacing && (
                   <ReplacePlayerDialog
                     player={replacing.player}
+                    targetPower={replacing.player ? replacing.player.power : averageInTeams}
                     teamName={`${TEAMS[replacing.team].icon} ${TEAMS[replacing.team].name}`}
                     bench={bench}
-                    onPick={(incoming) => replacePlayer(replacing.player, incoming)}
+                    onPick={(incoming) => replacePlayer(replacing.player, incoming, replacing.team)}
                     onClose={closeReplace}
                   />
                 )}
@@ -572,6 +592,7 @@ export default function TeamGenerator() {
                     color: TEAMS[t].color,
                     players: sharingOrder(team, result.captains[t]),
                     captainId: result.captains[t],
+                    borrowed: result.borrowed[t],
                   }))}
                 />
               </section>

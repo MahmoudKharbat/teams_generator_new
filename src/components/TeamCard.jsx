@@ -28,7 +28,8 @@ const COLORS = {
   },
 };
 
-export default function TeamCard({ name, icon, color, players, captainId, onReplace }) {
+// `borrowed`: empty slots at the end, filled by a player from the team sitting out (three teams only).
+export default function TeamCard({ name, icon, color, players, captainId, borrowed = 0, onReplace, onFill }) {
   const c = COLORS[color];
   return (
     <div className={`bg-gradient-to-br ${c.card} rounded-2xl p-4 sm:p-6 border`}>
@@ -39,13 +40,17 @@ export default function TeamCard({ name, icon, color, players, captainId, onRepl
         <div className="flex gap-2 text-sm">
           <span className={`px-3 py-1 rounded-lg ${c.stat}`}>
             Total <span className="font-bold">{totalPower(players)}</span>
+            {borrowed > 0 && <span title="Plus the borrowed player"> + ⭐</span>}
           </span>
           <span className={`px-3 py-1 rounded-lg ${c.stat}`}>
             Avg <span className="font-bold">{averagePower(players)}</span>
           </span>
         </div>
       </div>
-      <p className="text-slate-400 text-sm mb-3">{players.length} players</p>
+      <p className="text-slate-400 text-sm mb-3">
+        {players.length} players
+        {borrowed > 0 && ` + ⭐ ${borrowed} borrowed from the team sitting out`}
+      </p>
       <ul className="space-y-2">
         {players.map((player, index) => {
           const isCaptain = player.id === captainId;
@@ -83,6 +88,29 @@ export default function TeamCard({ name, icon, color, players, captainId, onRepl
             </li>
           );
         })}
+        {Array.from({ length: borrowed }, (_, i) => (
+          <li key={`borrowed-${i}`} className="flex items-center gap-3 rounded-xl p-2.5 border border-dashed border-amber-400/40 bg-amber-500/5">
+            <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center font-black text-white ${c.avatar}`}>
+              {players.length + i + 1}
+            </div>
+            <div className="flex-1 min-w-0 truncate">
+              <span className="mr-1.5">⭐</span>
+              <span className="font-semibold text-amber-200">Optional player</span>
+              <span className="text-slate-400 text-sm"> · from the team sitting out</span>
+            </div>
+            {onFill && (
+              <button
+                type="button"
+                onClick={onFill}
+                aria-label={`Add a player to ${name}`}
+                title="Someone else came? Add them here"
+                className="shrink-0 w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                ＋
+              </button>
+            )}
+          </li>
+        ))}
       </ul>
     </div>
   );

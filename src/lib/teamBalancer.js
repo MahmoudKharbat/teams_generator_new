@@ -6,6 +6,10 @@
 // gap between them. The second term stops splits like (star + weak players) vs (all average players)
 // that match on totals but play unevenly.
 //
+// With three teams the team sitting out lends a player to a short team (16 or 17 players: 5 vs 5 vs 6),
+// so each missing slot counts as one player of average power. With two teams there's nobody to borrow
+// from, so totals are compared as they are and the smaller team gets stronger players.
+//
 // Up to EXHAUSTIVE_LIMIT[teamCount] players every possible split is checked, so the result is the true
 // best. Above that, many randomized local searches are run instead.
 
@@ -27,6 +31,12 @@ export const MIN_PLAYERS_FOR_THREE_TEAMS = 16;
 
 const stdDev = (sum, sumSq, size) => (size ? Math.sqrt(Math.max(0, sumSq / size - (sum / size) ** 2)) : 0);
 
+// How many players each team borrows from the team sitting out. Only three teams can borrow.
+export function borrowedSlots(sizes) {
+  const largest = Math.max(...sizes);
+  return sizes.map((size) => (sizes.length > 2 ? largest - size : 0));
+}
+
 // Team sizes, smallest first: 16 players in 3 teams -> [5, 5, 6].
 export function teamSizes(playerCount, teamCount) {
   const base = Math.floor(playerCount / teamCount);
@@ -34,15 +44,17 @@ export function teamSizes(playerCount, teamCount) {
   return Array.from({ length: teamCount }, (_, t) => base + (t >= teamCount - extra ? 1 : 0));
 }
 
-function score(sums, sqs, sizes) {
+// `pad[t]` is the power team t gets from borrowed players.
+function score(sums, sqs, sizes, pad) {
   let minSum = Infinity;
   let maxSum = -Infinity;
   let minSpread = Infinity;
   let maxSpread = -Infinity;
   for (let t = 0; t < sizes.length; t++) {
     const spread = stdDev(sums[t], sqs[t], sizes[t]);
-    if (sums[t] < minSum) minSum = sums[t];
-    if (sums[t] > maxSum) maxSum = sums[t];
+    const total = sums[t] + pad[t];
+    if (total < minSum) minSum = total;
+    if (total > maxSum) maxSum = total;
     if (spread < minSpread) minSpread = spread;
     if (spread > maxSpread) maxSpread = spread;
   }
@@ -71,7 +83,7 @@ function makeCollector(window) {
 }
 
 // Splits are returned as the team index of each player.
-function exhaustiveSearch(powers, sizes, collector) {
+function exhaustiveSearch(powers, sizes, pad, collector) {
   const n = powers.length;
   const k = sizes.length;
   const counts = new Array(k).fill(0);
@@ -81,7 +93,7 @@ function exhaustiveSearch(powers, sizes, collector) {
   const place = powers.map((_, i) => k ** i);
   const visit = (i, code) => {
     if (i === n) {
-      collector.add(score(sums, sqs, sizes), code);
+      collector.add(score(sums, sqs, sizes, pad), code);
       return;
     }
     const p = powers[i];
@@ -109,7 +121,7 @@ const assignmentKey = (team, k) =>
     .sort()
     .join('|');
 
-function localSearch(powers, sizes, collector) {
+function localSearch(powers, sizes, pad, collector) {
   const n = powers.length;
   const k = sizes.length;
   const seen = new Set();
@@ -124,7 +136,7 @@ function localSearch(powers, sizes, collector) {
       sums[t] += powers[i];
       sqs[t] += powers[i] * powers[i];
     });
-    let current = score(sums, sqs, sizes);
+    let current = score(sums, sqs, sizes, pad);
 
     // Best-improvement swaps of two players on different teams until no swap helps.
     for (;;) {
@@ -140,7 +152,7 @@ function localSearch(powers, sizes, collector) {
           sqs[ti] += dSq;
           sums[tj] -= dSum;
           sqs[tj] -= dSq;
-          const s = score(sums, sqs, sizes);
+          const s = score(sums, sqs, sizes, pad);
           sums[ti] -= dSum;
           sqs[ti] -= dSq;
           sums[tj] += dSum;
@@ -198,7 +210,8 @@ export const splitKey = (teams) =>
  * mode 'balanced': the fairest split; when several are equally fair, one is picked at random.
  * mode 'shuffle': a random split scoring within SHUFFLE_TOLERANCE power points of the fairest.
  *
- * When players don't divide evenly the smaller teams get the stronger players, since totals are balanced.
+ * When players don't divide evenly: with two teams the smaller one gets stronger players, since totals are
+ * balanced; with three, short teams borrow from the team sitting out (see `borrowedSlots`).
  * `avoidKey` (from a previous result's `key`) skips that exact split when another option exists.
  */
 export function generateTeams(players, { mode = MODES.balanced, avoidKey = null, teamCount = 2 } = {}) {
@@ -206,13 +219,15 @@ export function generateTeams(players, { mode = MODES.balanced, avoidKey = null,
 
   const powers = players.map((p) => Math.round(p.power * SCALE));
   const sizes = teamSizes(players.length, teamCount);
+  const mean = powers.reduce((sum, p) => sum + p, 0) / powers.length;
+  const pad = borrowedSlots(sizes).map((slots) => slots * mean);
   const window = mode === MODES.shuffle ? SHUFFLE_TOLERANCE * SCALE : 0;
   const collector = makeCollector(window);
 
   const splits =
     players.length <= EXHAUSTIVE_LIMIT[teamCount]
-      ? exhaustiveSearch(powers, sizes, collector)
-      : localSearch(powers, sizes, collector);
+      ? exhaustiveSearch(powers, sizes, pad, collector)
+      : localSearch(powers, sizes, pad, collector);
 
   let options = splits.map((team) => {
     const teams = sizes.map((_, t) => players.filter((_, i) => team[i] === t));
@@ -226,15 +241,20 @@ export function generateTeams(players, { mode = MODES.balanced, avoidKey = null,
 }
 
 /**
- * Sorts each team strongest first and adds the split's `key` and `powerDiff`, keeping the order of the
- * teams. Used for generated splits and for saved or hand-edited ones.
+ * Sorts each team strongest first and adds the split's `key`, `borrowed` slots per team, `totals` (with
+ * each borrowed player counted at the average power) and `powerDiff`, keeping the order of the teams.
+ * Used for generated splits and for saved or hand-edited ones.
  */
 export function describeSplit(teams) {
   const sorted = teams.map((team) => [...team].sort((a, b) => b.power - a.power));
-  const totals = sorted.map(totalPower);
+  const borrowed = borrowedSlots(sorted.map((team) => team.length));
+  const mean = averagePower(sorted.flat());
+  const totals = sorted.map((team, t) => roundPower(totalPower(team) + borrowed[t] * mean));
   return {
     teams: sorted,
     key: splitKey(sorted),
+    borrowed,
+    totals,
     powerDiff: roundPower(Math.max(...totals) - Math.min(...totals)),
   };
 }
